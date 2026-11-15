@@ -79,7 +79,7 @@ export default function WalletPayment({ order, capturedTxid, api, onCaptured }: 
       {!wallet && <p>Use o WalletConnect para conectar sua carteira ou escolha pagar sem conectar.</p>}
       {pairingUri && <section className="ledger-walletconnect-pairing" aria-label="Conectar pelo WalletConnect">
         <p><strong>Abra o WalletConnect na sua carteira e leia este QR.</strong><br/>Este QR conecta a carteira; o pagamento será solicitado depois.</p>
-        <QRCodeSVG value={pairingUri} size={230} marginSize={4} bgColor="#ffffff" fgColor="#000000" title="QR para conectar a carteira via WalletConnect"/>
+        <QRCodeSVG value={pairingUri} size={230} style={{maxWidth:"100%",height:"auto"}} marginSize={4} bgColor="#ffffff" fgColor="#000000" title="QR para conectar a carteira via WalletConnect"/>
         <p>No mesmo celular, copie o código e cole na opção WalletConnect da sua carteira.</p>
         <button type="button" className="ledger-secondary" onClick={()=>void navigator.clipboard.writeText(pairingUri).then(()=>setPairingMessage("Código de conexão copiado."),()=>setPairingMessage("Não foi possível copiar. Use a leitura do QR."))}>Copiar código de conexão</button>
         <button type="button" className="ledger-secondary" onClick={()=>cancelPairing.current?.()}>Cancelar conexão</button>

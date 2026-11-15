@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import PaymentQr from "./PaymentQr";
 type Order = {
   id: string;
   numbers: number[];
@@ -314,18 +315,11 @@ export default function RaffleCheckout({ numbers, tracking = false }: { numbers:
               {order.status === "reserved" && (
                 <>
                   <p>
-                    Rede: <strong>{order.chain_id === 56 ? "BNB Smart Chain (BEP-20) · ID 56" : `EVM · ID ${order.chain_id}`}</strong>
+                    Rede: <strong>{Number(order.chain_id) === 56 ? "BNB Smart Chain (BEP-20) · ID 56" : `EVM · ID ${order.chain_id}`}</strong>
                     <br />
                     Contrato do token: <code>{order.token_address}</code>
                   </p>
-                  <label>
-                    Endereço de recebimento
-                    <input
-                      readOnly
-                      value={order.recipient}
-                      onFocus={(e) => e.target.select()}
-                    />
-                  </label>
+                  <PaymentQr recipient={order.recipient} symbol={order.symbol} chainId={order.chain_id} totalCents={order.total_cents} expiresAt={order.expires_at} />
                   <p>
                     Reserva até{" "}
                     {new Date(order.expires_at).toLocaleString("pt-BR")}. A taxa

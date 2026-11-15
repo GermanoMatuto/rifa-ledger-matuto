@@ -93,7 +93,7 @@ export default function RifaLedger() {
           <div className="ledger-section-title"><div><span className="ledger-eyebrow">01 / ESCOLHA SEUS NÚMEROS</span><h2 id="numbers-title">Qual vai ser o seu?</h2><p>Escolha um favorito ou deixe a seleção por nossa conta.</p></div><span className="ledger-preview-badge">Prévia interativa · vendas fechadas</span></div>
           <div className="ledger-shopping-layout">
             <div className="ledger-number-panel">
-              <div className="ledger-toolbar"><label className="ledger-search"><Search size={18} /><span className="sr-only">Buscar número de 0001 a 1200</span><input inputMode="numeric" value={search} maxLength={4} placeholder="Buscar número…" onChange={e => { setSearch(e.target.value.replace(/\D/g, "")); setPage(0); }} /></label><button className="ledger-secondary" onClick={() => surprise()} disabled={selected.length === TOTAL}>Escolher 5 para mim</button></div>
+              <div className="ledger-toolbar"><label className="ledger-search"><Search size={18} /><span className="sr-only">Buscar número de 0001 a 1200</span><input inputMode="numeric" value={search} maxLength={4} placeholder="Buscar número…" onChange={e => { setSearch(e.target.value.replace(/\D/g, "")); setPage(0); }} /></label><div className="ledger-quick-picks" aria-label="Seleção rápida de números"><button className="ledger-secondary" onClick={() => surprise(1)} disabled={selected.length === TOTAL}>Escolher 1</button><button className="ledger-secondary" onClick={() => surprise(3)} disabled={selected.length === TOTAL}>Escolher 3</button><button className="ledger-secondary" onClick={() => surprise(5)} disabled={selected.length === TOTAL}>Escolher 5</button></div></div>
               <div className="ledger-grid-meta"><div><span className="ledger-dot" /> Disponível na prévia <span className="ledger-dot ledger-dot-selected" /> Selecionado</div><label><input type="checkbox" checked={selectedOnly} onChange={e => setSelectedOnly(e.target.checked)} /> Só meus números</label></div>
               <div className="ledger-number-grid" aria-label="Números da prévia">{visible.map(n => <button key={n} className={selected.includes(n) ? "is-selected" : ""} aria-label={`Número ${numberLabel(n)}`} aria-pressed={selected.includes(n)} onClick={() => toggle(n)}>{numberLabel(n)}</button>)}</div>
               {!visible.length && <p className="ledger-empty">{selectedOnly ? "Nenhum número selecionado com esse filtro." : "Nenhum número encontrado. Busque de 0001 a 1200."}</p>}
@@ -122,6 +122,7 @@ export default function RifaLedger() {
     </div>
   );
 }
+
 
 
 

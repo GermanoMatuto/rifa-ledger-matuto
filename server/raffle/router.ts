@@ -1,5 +1,6 @@
 import express from "express";
-import { createHmac } from "node:crypto";
+import { createHash, createHmac, randomBytes } from "node:crypto";
+import { isIP } from "node:net";
 import { ADDRESS, quote, TXID, verifyTransfer } from "./payment.js";
 
 type Order = {
@@ -20,6 +21,7 @@ type Order = {
   created_at: string;
   expires_at: string;
   txid: string | null;
+  is_test: boolean;
 };
 const UUID =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -41,6 +43,11 @@ export function createRaffleRouter(env: NodeJS.ProcessEnv = process.env) {
     url && anon && secret && origin && env.RAFFLE_RATE_SECRET,
   );
   const enabled = ready && Boolean(env.RAFFLE_EVM_RPC_URL) && env.RAFFLE_SALES_ENABLED === "true";
+  function clientIp(req: express.Request) {
+    // Only Vercel's own deployment may trust this platform-overwritten header.
+    const forwarded = env.VERCEL === "1" ? req.get("x-vercel-forwarded-for")?.trim() : undefined;
+    return forwarded && isIP(forwarded) ? forwarded : req.ip || "unknown";
+  }
   async function request(path: string, init: RequestInit = {}, admin = true) {
     if (!ready)
       throw new HttpError(
@@ -76,6 +83,10 @@ export function createRaffleRouter(env: NodeJS.ProcessEnv = process.env) {
           409,
           "Esta transferência já foi apresentada. Entre em contato com o suporte se ela for sua.",
         );
+      if (data?.message?.includes("TEST_NOT_ALLOWED"))
+        throw new HttpError(403, "Este teste está disponível apenas para o organizador.");
+      if (data?.message?.includes("GUEST_EMAIL_MISMATCH"))
+        throw new HttpError(409, "Use o mesmo e-mail dos pedidos deste navegador ou saia para iniciar outro cadastro.");
       throw new HttpError(
         502,
         "Não foi possível concluir a operação. Tente novamente ou solicite suporte.",
@@ -90,6 +101,13 @@ export function createRaffleRouter(env: NodeJS.ProcessEnv = process.env) {
     });
   const cookieName =
     env.NODE_ENV === "production" ? "__Host-raffle-session" : "raffle-session";
+  const guestCookieName = env.NODE_ENV === "production" ? "__Host-raffle-guest" : "raffle-guest";
+  function guestToken(req: express.Request) {
+    const value = req.headers.cookie?.split(";").map(c => c.trim()).find(c => c.startsWith(guestCookieName + "="))?.slice(guestCookieName.length + 1);
+    return value && /^[a-f0-9]{64}$/.test(value) ? value : null;
+  }
+  const hashGuest = (token: string) => createHash("sha256").update(token).digest("hex");
+  const orderFields = "id,numbers,status,total_cents,symbol,recipient,chain_id,token_address,decimals,created_at,expires_at,txid,buyer_phone,has_whatsapp,is_test";
   function cookie(req: express.Request) {
     return req.headers.cookie
       ?.split(";")
@@ -111,6 +129,23 @@ export function createRaffleRouter(env: NodeJS.ProcessEnv = process.env) {
     if (!UUID.test(u.id) || !u.email_confirmed_at)
       throw new HttpError(401, "Confirme seu e-mail.");
     return u;
+  }
+  async function owner(req: express.Request): Promise<{ userId: string; hash?: never; filter: string } | { hash: string; userId?: never; filter: string }> {
+    if (cookie(req)) {
+      try {
+        const u = await user(req);
+        return { userId: u.id, filter: `user_id=eq.${u.id}` };
+      } catch (e) {
+        if (!(e instanceof HttpError) || e.status !== 401) throw e;
+      }
+    }
+    const token = guestToken(req);
+    if (token) {
+      const hash = hashGuest(token);
+      const rows = await request(`/rest/v1/raffle_guests?token_hash=eq.${hash}&expires_at=gt.${encodeURIComponent(new Date().toISOString())}&select=token_hash`);
+      if (rows.length) return { hash, filter: `guest_session_hash=eq.${hash}` };
+    }
+    throw new HttpError(401, "Confirme seu e-mail para recuperar seus pedidos neste dispositivo.");
   }
   async function limit(key: string, max: number, seconds: number) {
     const hashed = createHmac("sha256", env.RAFFLE_RATE_SECRET!)
@@ -157,6 +192,7 @@ export function createRaffleRouter(env: NodeJS.ProcessEnv = process.env) {
     res.json({
       configured: ready,
       salesEnabled: enabled,
+      testEnabled: ready && Boolean(env.RAFFLE_EVM_RPC_URL) && env.RAFFLE_TEST_ENABLED === "true",
       contactPolicy:
         "O telefone é privado e usado para acompanhar o pedido e entregar o prêmio. WhatsApp não é verificado automaticamente.",
     }),
@@ -180,7 +216,7 @@ export function createRaffleRouter(env: NodeJS.ProcessEnv = process.env) {
         .toLowerCase();
       if (email.length > 254 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))
         throw new HttpError(400, "Informe um e-mail válido.");
-      await limit("otp:" + req.ip, 5, 900);
+      await limit("otp:" + clientIp(req), 5, 900);
       await limit("email:" + email, 3, 900);
       await request(
         "/auth/v1/otp",
@@ -196,7 +232,7 @@ export function createRaffleRouter(env: NodeJS.ProcessEnv = process.env) {
   router.post(
     "/auth/verify",
     wrap(async (req, res) => {
-      await limit("verify:" + req.ip, 10, 900);
+      await limit("verify:" + clientIp(req), 10, 900);
       const email = String(req.body.email || "")
           .trim()
           .toLowerCase(),
@@ -213,6 +249,7 @@ export function createRaffleRouter(env: NodeJS.ProcessEnv = process.env) {
       );
       if (!data.access_token || !data.user?.email_confirmed_at)
         throw new HttpError(401, "Código inválido ou expirado.");
+      await rpcDb("raffle_claim_guest_orders", { p_user: data.user.id });
       res.cookie(cookieName, data.access_token, {
         httpOnly: true,
         secure: env.NODE_ENV === "production",
@@ -223,15 +260,18 @@ export function createRaffleRouter(env: NodeJS.ProcessEnv = process.env) {
       res.json({ email: data.user.email });
     }),
   );
-  router.post("/auth/logout", (_req, res) => {
+  router.post("/auth/logout", wrap(async (req, res) => {
+    const guest = guestToken(req);
+    if (guest) await request(`/rest/v1/raffle_guests?token_hash=eq.${hashGuest(guest)}`, { method: "PATCH", body: JSON.stringify({ expires_at: new Date().toISOString() }) });
     res.clearCookie(cookieName, {
       httpOnly: true,
       secure: env.NODE_ENV === "production",
       sameSite: "strict",
       path: "/",
     });
+    res.clearCookie(guestCookieName, { httpOnly: true, secure: env.NODE_ENV === "production", sameSite: "strict", path: "/" });
     res.json({ ok: true });
-  });
+  }));
   router.get(
     "/inventory",
     wrap(async (_req, res) =>
@@ -241,13 +281,50 @@ export function createRaffleRouter(env: NodeJS.ProcessEnv = process.env) {
   router.get(
     "/orders",
     wrap(async (req, res) => {
-      const u = await user(req);
+      const access = await owner(req);
+      await rpcDb("raffle_expire", {});
       const rows = await request(
-        `/rest/v1/raffle_orders?user_id=eq.${u.id}&select=id,numbers,status,total_cents,symbol,recipient,chain_id,token_address,decimals,created_at,expires_at,txid,buyer_phone,has_whatsapp&order=created_at.desc&limit=20`,
+        `/rest/v1/raffle_orders?${access.filter}&select=${orderFields}&order=created_at.desc&limit=20`,
       );
       res.json({ orders: rows });
     }),
   );
+  router.post("/guest/orders", wrap(async (req, res) => {
+    const test = req.body.test === true;
+    if (test ? !(ready && env.RAFFLE_EVM_RPC_URL && env.RAFFLE_TEST_ENABLED === "true") : !enabled)
+      throw new HttpError(409, test ? "O teste ainda não está disponível." : "As vendas ainda estão fechadas.");
+    await limit("guest-orders-ip:" + clientIp(req), 10, 3600);
+    const email = String(req.body.email || "").trim().toLowerCase();
+    const name = String(req.body.name || "").trim();
+    const phone = String(req.body.phone || "").trim();
+    if (email.length > 254 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || name.length < 2 || name.length > 100 || !/^\+[1-9]\d{7,14}$/.test(phone) || typeof req.body.whatsapp !== "boolean" || req.body.contactConsent !== true)
+      throw new HttpError(400, "Confira nome, e-mail e telefone com DDI.");
+    await limit("guest-orders-email:" + email, 5, 3600);
+    let authenticatedUser: string | undefined;
+    if (cookie(req)) {
+      try {
+        const u = await user(req);
+        if (String(u.email).toLowerCase() !== email) throw new HttpError(409, "Use o e-mail da sessão atual ou saia antes de trocar de comprador.");
+        authenticatedUser = u.id;
+      } catch (e) { if (!(e instanceof HttpError) || e.status !== 401) throw e; }
+    }
+    let numbers: number[] = [];
+    if (!test) {
+      try { numbers = quote(req.body.numbers).numbers; }
+      catch (e) { throw new HttpError(400, e instanceof Error ? e.message : "Números inválidos."); }
+    }
+    let token = guestToken(req);
+    if (token) {
+      const existing = await request(`/rest/v1/raffle_guests?token_hash=eq.${hashGuest(token)}&expires_at=gt.${encodeURIComponent(new Date().toISOString())}&select=token_hash`);
+      if (!existing.length) token = null;
+    }
+    token ||= randomBytes(32).toString("hex");
+    const order = await rpcDb("raffle_create_guest_order", { p_hash: hashGuest(token), p_email: email, p_name: name, p_phone: phone, p_whatsapp: req.body.whatsapp, p_numbers: numbers, p_test: test });
+    if (authenticatedUser) await rpcDb("raffle_claim_guest_orders", { p_user: authenticatedUser });
+    res.cookie(guestCookieName, token, { httpOnly: true, secure: env.NODE_ENV === "production", sameSite: "strict", path: "/", maxAge: 30 * 86400000 });
+    const result = await request(`/rest/v1/raffle_orders?id=eq.${order.id}&select=${orderFields}`);
+    res.status(201).json({ order: result[0] });
+  }));
   router.post(
     "/orders",
     wrap(async (req, res) => {
@@ -289,21 +366,22 @@ export function createRaffleRouter(env: NodeJS.ProcessEnv = process.env) {
   router.post(
     "/orders/:id/transfer",
     wrap(async (req, res) => {
-      const u = await user(req);
-      await limit("tx:" + u.id, 15, 900);
+      const access = await owner(req);
+      await limit("tx:" + (access.userId || access.hash), 15, 900);
       if (
         !UUID.test(String(req.params.id)) ||
         !TXID.test(String(req.body.txid || ""))
       )
         throw new HttpError(400, "Pedido ou txid inválido.");
       const rows: Order[] = await request(
-        `/rest/v1/raffle_orders?id=eq.${req.params.id}&user_id=eq.${u.id}&select=*`,
+        `/rest/v1/raffle_orders?id=eq.${req.params.id}&${access.filter}&select=*`,
       );
       const order = rows[0];
       if (!order) throw new HttpError(404, "Pedido não encontrado.");
       const hash = String(req.body.txid).toLowerCase();
       if (order.txid === hash) {
-        res.json({ order });
+        const safeRows = await request(`/rest/v1/raffle_orders?id=eq.${order.id}&${access.filter}&select=${orderFields}`);
+        res.json({ order: safeRows[0] });
         return;
       }
       if (order.txid)
@@ -351,16 +429,17 @@ export function createRaffleRouter(env: NodeJS.ProcessEnv = process.env) {
           e instanceof Error ? e.message : "Não foi possível verificar.",
         );
       }
-      const updated = await rpcDb("raffle_record_transfer", {
+      const updated = await rpcDb(access.hash ? "raffle_record_guest_transfer" : "raffle_record_transfer", {
         p_order: order.id,
-        p_user: u.id,
+        ...(access.hash ? { p_hash: access.hash } : { p_user: access.userId }),
         p_txid: transfer.txid,
         p_log: transfer.logIndex,
         p_block: transfer.blockHash,
         p_received: transfer.paidAt,
       });
+      const safeRows = await request(`/rest/v1/raffle_orders?id=eq.${updated.id}&${access.filter}&select=${orderFields}`);
       res.json({
-        order: updated,
+        order: safeRows[0],
         message:
           "Recebimento verificado. A vinculação ao comprador está em análise; os números ainda não foram liberados.",
       });
@@ -368,6 +447,5 @@ export function createRaffleRouter(env: NodeJS.ProcessEnv = process.env) {
   );
   return router;
 }
-
 
 

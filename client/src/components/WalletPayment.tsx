@@ -17,6 +17,7 @@ export default function WalletPayment({ order, capturedTxid, api, onCaptured }: 
   const [remoteWallet, setRemoteWallet] = useState<Wallet | null>(null);
   const [pairingUri, setPairingUri] = useState("");
   const [pairingMessage, setPairingMessage] = useState("");
+  const [isMobile]=useState(()=>/Android|iPhone|iPad|iPod/i.test(navigator.userAgent)||window.matchMedia('(pointer:coarse)').matches);
   const [modalOpen, setModalOpen] = useState(false);
   const modal = useRef<HTMLDialogElement>(null);
   const connectionEpoch = useRef(0);
@@ -125,6 +126,7 @@ export default function WalletPayment({ order, capturedTxid, api, onCaptured }: 
     }} onCancel={event=>{event.preventDefault();closeModal();}} onClick={event=>{if(event.target===event.currentTarget) {const rect=event.currentTarget.getBoundingClientRect();if(event.clientX<rect.left||event.clientX>rect.right||event.clientY<rect.top||event.clientY>rect.bottom)closeModal();}}}>
       <header className="ledger-wallet-modal-header"><div><h2 id={`wallet-title-${order.id}`}>{pairingUri ? "Conectar com WalletConnect" : "Conectar carteira"}</h2><p>{pairingUri ? "Aprove a conexão no app da sua carteira." : "Escolha como deseja conectar."}</p></div><button type="button" className="ledger-icon-button" aria-label="Fechar conexão" onClick={closeModal}><X size={20} aria-hidden="true"/></button></header>
       {pairingUri ? <section className="ledger-walletconnect-pairing" aria-label="Conectar pelo WalletConnect">
+        {isMobile&&/^wc:[0-9a-f]+@2\?/i.test(pairingUri)&&<div className="ledger-wallet-mobile-links"><a href={`https://link.trustwallet.com/wc?uri=${encodeURIComponent(pairingUri)}`} target="_blank" rel="noopener noreferrer" referrerPolicy="no-referrer"><Smartphone size={18} aria-hidden="true"/>Abrir no Trust Wallet</a><p>Se você usa outra carteira, leia o QR ou copie o código abaixo. Aprovar a conexão não faz o pagamento.</p></div>}
         <div className="ledger-pairing-qr"><QRCodeSVG value={pairingUri} size={250} marginSize={4} bgColor="#ffffff" fgColor="#000000" title="QR para conectar a carteira via WalletConnect"/></div>
         <p>Leia o QR pela opção <strong>WalletConnect</strong> da sua carteira. Este QR conecta; ele não transfere valores.</p>
         <button type="button" className="ledger-secondary" onClick={()=>void navigator.clipboard.writeText(pairingUri).then(()=>setPairingMessage("Código de conexão copiado."),()=>setPairingMessage("Não foi possível copiar. Use a leitura do QR."))}>Copiar código de conexão</button>

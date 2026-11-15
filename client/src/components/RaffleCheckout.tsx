@@ -1,8 +1,9 @@
-import { useEffect, useState } from "react";
+import { useEffect, useId, useState } from "react";
 import { Link } from "wouter";
 import PaymentQr from "./PaymentQr";
 import WalletPayment from "./WalletPayment";
 import { Wallet, ArrowUpRight, Check, Clock3 } from "lucide-react";
+import { displayPhone, normalizePhone, validPhone } from "@/lib/contact-phone";
 
 type Order = { id: string; numbers: number[]; status: string; total_cents: number; symbol: string; recipient: string; chain_id: number; token_address: string; decimals: number; expires_at: string; txid: string | null; is_test?: boolean; wallet_txid?: string | null };
 function savedWalletTx(id: string) { try { const hash = localStorage.getItem(`matuto-payment-tx:${id}`); return hash && /^0x[0-9a-fA-F]{64}$/.test(hash) ? hash : null; } catch { return null; } }
@@ -20,6 +21,8 @@ export default function RaffleCheckout({ numbers, tracking = false, testMode = f
   const [detectionEnabled, setDetectionEnabled] = useState(false), [methods, setMethods] = useState<Record<string, "wallet" | "external">>({});
   const [detection, setDetection] = useState<Record<string,string>>({}), [walletPending, setWalletPending] = useState<Record<string,string>>({});
   const [email, setEmail] = useState(""), [name, setName] = useState(""), [phone, setPhone] = useState("+55"), [whatsapp, setWhatsapp] = useState(true);
+  const [country,setCountry]=useState('55'),[fieldErrors,setFieldErrors]=useState<Record<string,string>>({});
+  const contactId=useId();
   const [code, setCode] = useState(""), [sent, setSent] = useState(false), [recovery, setRecovery] = useState(tracking), [orders, setOrders] = useState<Order[]>([]);
   const [txids, setTxids] = useState<Record<string, string>>({}), [message, setMessage] = useState(""), [busy, setBusy] = useState(false), [restoring, setRestoring] = useState(true);
   useEffect(() => {
@@ -76,21 +79,22 @@ export default function RaffleCheckout({ numbers, tracking = false, testMode = f
   return <section className="ledger-checkout" aria-label="Contato e pagamento" aria-busy={busy || restoring}>
     {!tracking && <ol className="ledger-checkout-steps" aria-label="Etapas da compra"><li aria-current={!current ? "step" : undefined}>1. Seus dados</li><li aria-current={current?.status === "reserved" ? "step" : undefined}>2. Pagamento</li><li aria-current={current && current.status !== "reserved" ? "step" : undefined}>3. Acompanhamento</li></ol>}
     {restoring ? <p role="status">Conferindo seus pedidos neste navegador…</p> : <>
-      {!tracking && !current && !recovery && <>
+      {!tracking&&!testMode&&!current&&!recovery&&!sales&&<div className="ledger-checkout-closed" role="status"><h2>As vendas ainda não abriram.</h2><p>Sua seleção está salva neste navegador. Não é uma reserva e nenhum pagamento será gerado agora.</p><p>Você não precisa preencher seus dados enquanto as vendas estiverem fechadas.</p><Link href="/" className="ledger-secondary">Voltar aos números</Link><button type="button" className="ledger-text-button" onClick={()=>setRecovery(true)}>Já fiz um pedido · recuperar</button></div>}
+      {!tracking && !current && !recovery && (testMode||sales) && <>
         <h2>Seus dados para acompanhar o pedido</h2>
-        <p>Sem criar senha. Preencha uma vez e siga para o pagamento.</p>
+        <p>Sem criar senha. Seus números e comprovante chegarão por e-mail.</p>
         {testMode && <p className="ledger-test-notice"><strong>Teste do organizador · 1,00 USDT</strong><br/>Um número de teste, sem participação na rifa. Uma transferência nesta etapa usa USDT real.</p>}
-        <form onSubmit={event => { event.preventDefault(); void run(async () => {
+        <form onSubmit={event => { event.preventDefault();const errors:Record<string,string>={};if(name.trim().length<2)errors.name='Informe seu nome.';if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim()))errors.email='Confira o endereço de e-mail.';if(!validPhone(phone,country))errors.phone='Confira o telefone e o país selecionado.';setFieldErrors(errors);const first=Object.keys(errors)[0];if(first){event.currentTarget.querySelector<HTMLInputElement>(`[name="${first}"]`)?.focus();return;}void run(async () => {
           const data = await api("/guest/orders", { email, name, phone, whatsapp, contactConsent: true, numbers: testMode ? [] : numbers, test: testMode });
           setOrders(previous => [data.order, ...previous.filter(order => order.id !== data.order.id)]);
           setMessage("");
         }); }}>
-          <label>Nome completo<input autoComplete="name" required minLength={2} maxLength={100} value={name} onChange={event => setName(event.target.value)} disabled={busy}/></label>
-          <label>E-mail<input type="email" autoComplete="email" required maxLength={254} value={email} onChange={event => setEmail(event.target.value)} disabled={busy}/></label>
-          <small>Confira a escrita: este e-mail permite recuperar seu pedido em outro dispositivo.</small>
-          <label>Telefone com DDI<input type="tel" autoComplete="tel" required placeholder="+5511999999999" pattern="\+[1-9][0-9]{7,14}" value={phone} onChange={event => setPhone(event.target.value.replace(/[^+\d]/g,""))} disabled={busy}/></label>
+          <label>Nome completo<input name="name" autoComplete="name" required minLength={2} maxLength={100} value={name} aria-invalid={!!fieldErrors.name} aria-describedby={fieldErrors.name?`${contactId}-name`:undefined} onChange={event=>{setName(event.target.value);setFieldErrors(old=>({...old,name:''}))}} disabled={busy}/></label>{fieldErrors.name&&<small id={`${contactId}-name`} className="ledger-field-error">{fieldErrors.name}</small>}
+          <label>E-mail<input name="email" type="email" autoComplete="email" required maxLength={254} value={email} aria-invalid={!!fieldErrors.email} aria-describedby={`${contactId}-email`} onChange={event=>{setEmail(event.target.value);setFieldErrors(old=>({...old,email:''}))}} disabled={busy}/></label>
+          <small id={`${contactId}-email`} className={fieldErrors.email?'ledger-field-error':''}>{fieldErrors.email||'Confira a escrita: enviaremos seus números para este e-mail.'}</small>
+          <div className="ledger-phone-fields"><label>País<select value={country} disabled={busy} aria-label="País do telefone" onChange={event=>{setCountry(event.target.value);setPhone(event.target.value==='other'?'+':'+'+event.target.value);setFieldErrors(old=>({...old,phone:''}))}}><option value="55">Brasil +55</option><option value="351">Portugal +351</option><option value="1">EUA / Canadá +1</option><option value="other">Outro país</option></select></label><label>WhatsApp ou telefone<input name="phone" type="tel" inputMode="tel" autoComplete={country==='other'?'tel':'tel-national'} required maxLength={24} placeholder={country==='55'?'(11) 99999-9999':country==='other'?'+código e número':'Seu telefone'} value={displayPhone(phone,country)} aria-invalid={!!fieldErrors.phone} aria-describedby={fieldErrors.phone?`${contactId}-phone`:undefined} onChange={event=>{const raw=event.target.value;if(raw.trim().startsWith('+')){const digits=raw.replace(/\D/g,'');setCountry(['351','55','1'].find(code=>digits.startsWith(code))||'other')}setPhone(normalizePhone(raw,country));setFieldErrors(old=>({...old,phone:''}))}} disabled={busy}/></label></div>{fieldErrors.phone&&<small id={`${contactId}-phone`} className="ledger-field-error">{fieldErrors.phone}</small>}
           <label className="ledger-check-label"><input type="checkbox" checked={whatsapp} onChange={event => setWhatsapp(event.target.checked)} disabled={busy}/>Este número tem WhatsApp</label>
-          <p className="ledger-contact-notice">Usaremos seu contato para acompanhar o pedido e combinar a entrega se você ganhar. Seus dados não serão públicos. O endereço de entrega será solicitado somente ao vencedor. Ao continuar, você está ciente desse uso.</p>
+          <p className="ledger-contact-notice">Seus contatos são privados e usados para o pedido e a entrega do prêmio. Ao continuar, você está ciente desse uso. O endereço só será solicitado ao vencedor.</p>
           <button className="ledger-primary" disabled={busy || !canCreate}>{busy ? "Preparando pagamento…" : testMode ? "Gerar pagamento de teste · 1 USDT" : "Reservar números e pagar"}</button>
           {!configured ? <p>Pagamento ainda não configurado. Não envie valores.</p> : !canCreate && <p>{testMode ? "O teste ainda não está disponível." : "As vendas estão fechadas. Você pode conferir os dados, mas ainda não criar um pagamento."}</p>}
         </form>

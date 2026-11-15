@@ -1,0 +1,11 @@
+import{it}from'vitest';import assert from'node:assert/strict';import{PGlite}from'@electric-sql/pglite';import{readFileSync}from'node:fs';
+it('distinguishes sold and reserved numbers, releases expired reservations, and exposes no buyer data',async()=>{const db=new PGlite();try{
+ await db.exec('create role anon;create role authenticated;create role service_role;create schema auth;create table auth.users(id uuid primary key,email text,email_confirmed_at timestamptz);');
+ for(const name of ['202611140001_raffle.sql','202611150001_discount_tiers.sql','202611150002_guest_checkout.sql','202611150003_payment_detection.sql','202611150004_wallet_auto_confirmation.sql','202611150005_payment_receipts.sql','202611150006_admin_payments.sql','202611150007_public_inventory.sql','202611150008_navigation_metrics.sql'])await db.exec(readFileSync('supabase/migrations/'+name,'utf8'));
+ await db.query("insert into raffle_settings values(true,56,$1,$2,'USDT',18,clock_timestamp()+interval '1 day',true)",['0x'+'b'.repeat(40),'0x'+'c'.repeat(40)]);
+ const create=async(n)=>(await db.query("select to_json(raffle_create_guest_order($1,$2,'Comprador Teste','+5511999999999',true,$3,false)) as item",[n.toString(16).padStart(64,'0'),`buyer${n}@example.com`,[n]])).rows[0].item;
+ const paid=await create(1),reserved=await create(2),expired=await create(3);await db.query("update raffle_orders set status='paid' where id=$1",[paid.id]);await db.query("update raffle_orders set expires_at=clock_timestamp()-interval '1 second' where id=$1",[expired.id]);
+ const stock=(await db.query('select raffle_inventory_states() as result')).rows[0].result;assert.deepEqual(stock,{sold:[1],reserved:[2],unavailable:[1,2]});assert.equal(JSON.stringify(stock).includes('buyer'),false);
+ await db.query("select raffle_record_navigation('selection','mobile','preview')");await db.query("select raffle_record_navigation('selection','mobile','preview')");assert.equal(Number((await db.query('select raffle_navigation_summary() as result')).rows[0].result[0].count),2);
+ await db.exec('set role anon');await assert.rejects(()=>db.query('select * from raffle_navigation_metrics'),/permission denied/);await assert.rejects(()=>db.query('select raffle_inventory_states()'),/permission denied/);
+ }finally{await db.close()}},20000);

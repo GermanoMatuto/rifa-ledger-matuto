@@ -5,11 +5,13 @@ import RaffleCheckout from '@/components/RaffleCheckout';
 import { readSelection, formatUSD, discountPercent } from '@/lib/raffle-selection';
 import { DRAW_RULE, DRAW_TIME_NOTE } from '@/lib/raffle-schedule';
 import './rifa-ledger.css';
+import {trackNavigation} from '@/lib/navigation-metrics';
 export default function CheckoutPage({ tracking = false }: { tracking?: boolean }) {
   const testMode = !tracking && new URLSearchParams(window.location.search).get('teste') === '1';
   const [numbers] = useState(() => testMode ? [] : readSelection());
   const subtotal = testMode ? 100 : numbers.length * 400, rate = testMode ? 0 : discountPercent(numbers.length), discount = Math.round(subtotal * rate / 100);
   useEffect(() => {
+    if(!tracking&&!testMode)trackNavigation('checkout');
     window.scrollTo(0, 0); document.title = tracking ? 'Meus pedidos | Investidor Matuto' : 'Checkout | Investidor Matuto';
     return () => { document.title = 'Ledger | Investidor Matuto'; };
   }, [tracking]);

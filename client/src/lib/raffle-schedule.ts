@@ -1,3 +1,3 @@
 export const DRAW_DATE = '20/12/2026';
-export const DRAW_RULE = 'Sorteio em 20/12/2026. Se os 1.200 números tiverem pagamento confirmado antes, será realizado no próximo dia útil após o esgotamento, sem ultrapassar 20/12/2026.';
-export const DRAW_TIME_NOTE = 'Horário a definir antes da abertura das vendas.';
+export const DRAW_RULE = 'Apuração prevista a partir de 20/12/2026 pela Loteria Federal. Vence o titular do primeiro número pago entre 0001 e 1200 que coincidir com os quatro últimos algarismos do 1º ao 5º prêmio, nessa ordem. Se nenhum corresponder, a apuração continua na próxima extração, com a mesma lista de participantes.';
+export const DRAW_TIME_NOTE = 'Será seguido o horário oficial da extração da CAIXA, no horário de Brasília, inclusive em caso de adiamento. O concurso inicial e o encerramento dos pagamentos serão divulgados antes da abertura das vendas. A identificação do vencedor pode ocorrer após 20/12.';

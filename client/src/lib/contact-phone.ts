@@ -1,0 +1,3 @@
+export function normalizePhone(input:string,country:string){const digits=input.replace(/\D/g,'');return input.trim().startsWith('+')?'+'+digits:country==='other'?'+'+digits:'+'+country+digits;}
+export function displayPhone(phone:string,country:string){if(country==='other')return phone;const national=phone.startsWith('+'+country)?phone.slice(country.length+1):phone.replace(/\D/g,'');if(country!=='55')return national;return national.length<=2?national:`(${national.slice(0,2)}) ${national.slice(2).replace(/^(\d{4,5})(\d{4})$/,'$1-$2')}`;}
+export function validPhone(phone:string,country:string){return /^\+[1-9]\d{7,14}$/.test(phone)&&(country!=='55'||/^\+55\d{10,11}$/.test(phone));}

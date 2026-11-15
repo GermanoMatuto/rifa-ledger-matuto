@@ -293,8 +293,15 @@ export function createRaffleRouter(env: NodeJS.ProcessEnv = process.env) {
     const status = String(req.query.status || "all"), search = String(req.query.search || "").trim(), page = Number(req.query.page || 1);
     if (!["all","paid","review","reserved","expired"].includes(status) || search.length>100 || !Number.isInteger(page) || page<1 || page>2000) throw new HttpError(400, "Filtro inválido.");
     await rpcDb("raffle_expire", {});
-    const result = await rpcDb("raffle_admin_payments", { p_search: search, p_status: status, p_include_tests: req.query.tests !== "false", p_offset: (page-1)*50 });
-    res.json({ ...result, page, pageSize: 50, updatedAt: new Date().toISOString() });
+    const [result,funnel] = await Promise.all([rpcDb("raffle_admin_payments", { p_search: search, p_status: status, p_include_tests: req.query.tests !== "false", p_offset: (page-1)*50 }),rpcDb('raffle_navigation_summary',{})]);
+    res.json({ ...result, funnel, page, pageSize: 50, updatedAt: new Date().toISOString() });
+  }));
+  router.post('/events',wrap(async(req,res)=>{
+    const event=String(req.body.event||''),device=String(req.body.device||'');
+    if(!['landing','selection','checkout'].includes(event)||!['mobile','desktop'].includes(device))throw new HttpError(400,'Evento inválido.');
+    await limit('navigation:'+clientIp(req),60,3600);
+    await rpcDb('raffle_record_navigation',{p_event:event,p_device:device,p_phase:enabled?'sales':'preview'});
+    res.json({ok:true});
   }));
   router.post("/internal/receipts", wrap(async (req,res)=>{
     const expected=env.RAFFLE_WORKER_SECRET||"",supplied=req.get("authorization")?.replace(/^Bearer /,"")||"";
@@ -310,7 +317,7 @@ export function createRaffleRouter(env: NodeJS.ProcessEnv = process.env) {
   router.get(
     "/inventory",
     wrap(async (_req, res) =>
-      res.json({ unavailable: await rpcDb("raffle_inventory", {}) }),
+      res.json({ ...await rpcDb("raffle_inventory_states", {}), updatedAt: new Date().toISOString() }),
     ),
   );
   router.get(

@@ -8,7 +8,7 @@ Only BNB Smart Chain (eip155:56), personal_sign, and eth_sendTransaction are req
 
 “Escolher outra carteira” disconnects the remote session. Reloading does not automatically reconnect or open wallet requests: the SDK is initialized after another explicit click, at which point a previously approved session can be reused. Pending transaction hashes and uncertain broadcast guards remain in place. Final payment verification is server-side and the existing review requirement remains.
 
-The connection QR is tested against the live relay without moving funds. Actual wallet approval and a real USDT transfer require a user's wallet and are separate from mocked transaction tests. The regular raffle sales switch remains closed.
+The connection QR is tested against the live relay without moving funds. Actual wallet approval and a real USDT transfer require a user's wallet and are separate from mocked transaction tests. The regular raffle sales switch remains closed. Confirmation and receipt delivery are described in [administracao-e-recibos.md](administracao-e-recibos.md): valid signed-wallet payments are now approved automatically; exceptions remain in review.
 
 ## Checkout interaction
 

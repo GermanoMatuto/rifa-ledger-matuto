@@ -1,14 +1,16 @@
 import express from "express";
-import { createHash, createHmac, randomBytes } from "node:crypto";
+import { createHash, createHmac, randomBytes, timingSafeEqual } from "node:crypto";
 import { isIP } from "node:net";
 import { ADDRESS, quote, TXID, verifyTransfer } from "./payment.js";
 import { makeRpc } from "./rpc.js";
 import { detectTransfers } from "./detection.js";
 import { verifyMessage } from "viem";
+import { dispatchReceipts } from "./receipts.js";
 
 type Order = {
   id: string;
-  user_id: string;
+  user_id: string | null;
+  guest_session_hash: string | null;
   buyer_name: string;
   buyer_phone: string;
   has_whatsapp: boolean;
@@ -282,6 +284,29 @@ export function createRaffleRouter(env: NodeJS.ProcessEnv = process.env) {
     res.clearCookie(guestCookieName, { httpOnly: true, secure: env.NODE_ENV === "production", sameSite: "strict", path: "/" });
     res.json({ ok: true });
   }));
+  router.get("/admin/payments", wrap(async (req, res) => {
+    // Guest sessions and the test-email allowlist never grant administrative access.
+    const account = await user(req);
+    const admins = (env.RAFFLE_ADMIN_EMAILS || "").split(",").map(email=>email.trim().toLowerCase()).filter(Boolean);
+    if (!account.email || !admins.includes(String(account.email).toLowerCase())) throw new HttpError(403, "Este e-mail não tem acesso ao painel administrativo.");
+    await limit("admin-read:" + account.id, 60, 60);
+    const status = String(req.query.status || "all"), search = String(req.query.search || "").trim(), page = Number(req.query.page || 1);
+    if (!["all","paid","review","reserved","expired"].includes(status) || search.length>100 || !Number.isInteger(page) || page<1 || page>2000) throw new HttpError(400, "Filtro inválido.");
+    await rpcDb("raffle_expire", {});
+    const result = await rpcDb("raffle_admin_payments", { p_search: search, p_status: status, p_include_tests: req.query.tests !== "false", p_offset: (page-1)*50 });
+    res.json({ ...result, page, pageSize: 50, updatedAt: new Date().toISOString() });
+  }));
+  router.post("/internal/receipts", wrap(async (req,res)=>{
+    const expected=env.RAFFLE_WORKER_SECRET||"",supplied=req.get("authorization")?.replace(/^Bearer /,"")||"";
+    if(expected.length<32 || supplied.length!==expected.length || !timingSafeEqual(Buffer.from(expected),Buffer.from(supplied)))throw new HttpError(401,"Acesso não autorizado.");
+    const pending:Order[]=await request('/rest/v1/raffle_orders?status=in.(reserved,review)&wallet_txid=not.is.null&order=wallet_check_at.asc.nullsfirst,created_at.asc&limit=5&select=*');
+    await Promise.allSettled(pending.map(async order=>{
+      await request(`/rest/v1/raffle_orders?id=eq.${order.id}`,{method:"PATCH",body:JSON.stringify({wallet_check_at:new Date().toISOString()})});
+      if(order.user_id)await reconcileWallet(order,{userId:order.user_id,filter:""});
+      else if(order.guest_session_hash)await reconcileWallet(order,{hash:order.guest_session_hash,filter:""});
+    }));
+    res.json(await dispatchReceipts(env,rpcDb));
+  }));
   router.get(
     "/inventory",
     wrap(async (_req, res) =>
@@ -393,6 +418,14 @@ export function createRaffleRouter(env: NodeJS.ProcessEnv = process.env) {
   }
   const unitsFor = (order: Order) => BigInt(order.total_cents) * 10n ** BigInt(order.decimals - 2);
   const configFor = (order: Order) => ({ chainId: Number(order.chain_id), token: order.token_address, recipient: order.recipient, decimals: order.decimals });
+  async function reconcileWallet(order:Order,access:Awaited<ReturnType<typeof owner>>){
+    if(!env.RAFFLE_EVM_RPC_URL || !order.wallet_txid)throw new Error("Verificação da rede indisponível.");
+    const transfer=await verifyTransfer(makeRpc(env.RAFFLE_EVM_RPC_URL),order.wallet_txid,configFor(order),unitsFor(order),order.created_at);
+    if(transfer.sender!==order.wallet_address?.toLowerCase())throw new Error("O remetente não corresponde à carteira vinculada. Solicite conferência; não envie novamente.");
+    await recordForOwner(order,access,transfer);
+    const confirmed=await rpcDb("raffle_confirm_wallet_payment",{p_order:order.id,p_txid:transfer.txid,p_sender:transfer.sender,p_log:transfer.logIndex,p_block:transfer.blockHash,p_received:transfer.paidAt,p_units:transfer.units});
+    return{state:confirmed.state,txid:transfer.txid};
+  }
 
   router.post("/orders/:id/wallet/challenge", wrap(async (req, res) => {
     const { access, order } = await ownedOrder(req); openOrder(order);
@@ -428,15 +461,14 @@ export function createRaffleRouter(env: NodeJS.ProcessEnv = process.env) {
   router.post("/orders/:id/detect", wrap(async (req, res) => {
     const { access, order } = await ownedOrder(req);
     await limit("detect:" + order.id, 6, 60);
-    if (order.txid) { res.json({ state: order.status }); return; }
+    if (order.status === "paid" || (order.txid && !order.wallet_txid)) { res.json({ state: order.status }); return; }
     if (!env.RAFFLE_EVM_RPC_URL) throw new HttpError(503, "Verificação da rede indisponível.");
     const rpc = makeRpc(env.RAFFLE_EVM_RPC_URL);
     if (order.wallet_txid) {
       try {
-        const transfer = await verifyTransfer(rpc, order.wallet_txid, configFor(order), unitsFor(order), order.created_at);
-        if (transfer.sender !== order.wallet_address?.toLowerCase()) throw new Error("O remetente não corresponde à carteira vinculada. Solicite conferência; não envie novamente.");
-        await recordForOwner(order, access, transfer);
-        res.json({ state: "review", txid: transfer.txid });
+        const confirmed = await reconcileWallet(order,access);
+        if(confirmed.state === "paid") await dispatchReceipts(env,rpcDb,order.id).catch(()=>{});
+        res.json(confirmed);
       } catch (error) {
         res.json({ state: "pending", message: error instanceof Error ? error.message : "Aguardando confirmação na rede." });
       }

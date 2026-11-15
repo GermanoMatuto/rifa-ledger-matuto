@@ -1,0 +1,14 @@
+import { it } from 'vitest';import assert from 'node:assert/strict';import {PGlite} from '@electric-sql/pglite';import{readFileSync}from'node:fs';
+it('queues one receipt per confirmed order, leases retries, and exposes only safe admin fields',async()=>{const db=new PGlite();try{
+ await db.exec('create role anon;create role authenticated;create role service_role;create schema auth;create table auth.users(id uuid primary key,email text,email_confirmed_at timestamptz);');
+ for(const name of ['202611140001_raffle.sql','202611150001_discount_tiers.sql','202611150002_guest_checkout.sql','202611150003_payment_detection.sql','202611150004_wallet_auto_confirmation.sql','202611150005_payment_receipts.sql','202611150006_admin_payments.sql'])await db.exec(readFileSync('supabase/migrations/'+name,'utf8'));
+ await db.query("insert into raffle_settings values(true,56,$1,$2,'USDT',18,clock_timestamp()+interval '1 day',true)",['0x'+'b'.repeat(40),'0x'+'c'.repeat(40)]);
+ const o=(await db.query("select to_json(raffle_create_guest_order($1,'buyer@example.com','Cliente Teste','+5511999999999',true,'{42}',false)) as item",['a'.repeat(64)])).rows[0].item;
+ assert.equal((await db.query('select count(*) from raffle_receipts')).rows[0].count,0);
+ await db.query("update raffle_orders set status='paid' where id=$1",[o.id]);await db.query("update raffle_orders set status='paid' where id=$1",[o.id]);const queued=(await db.query('select * from raffle_receipts')).rows;assert.equal(queued.length,1);assert.deepEqual(queued[0].payload.numbers,[42]);assert.equal(queued[0].recipient,'buyer@example.com');
+ assert.equal((await db.query('select * from raffle_claim_receipts(null)')).rows.length,1);assert.equal((await db.query('select * from raffle_claim_receipts(null)')).rows.length,0);
+ await db.query("select raffle_receipt_failed($1,1,'PROVIDER_HTTP_503')",[o.id]);assert.equal((await db.query('select * from raffle_claim_receipts(null)')).rows.length,0);await db.query("update raffle_receipts set next_attempt_at=clock_timestamp()-interval '1 minute'");assert.equal((await db.query('select * from raffle_claim_receipts(null)')).rows[0].attempts,2);
+ await db.query("select raffle_receipt_sent($1,2,'provider-id')",[o.id]);assert.equal((await db.query('select * from raffle_claim_receipts(null)')).rows.length,0);
+ const dashboard=(await db.query("select raffle_admin_payments('42','paid',false,0) as result")).rows[0].result;assert.equal(dashboard.summary.paidCents,400);assert.equal(dashboard.summary.paidNumbers,1);assert.equal(dashboard.orders[0].receipt_status,'sent');assert.equal(dashboard.orders[0].guest_session_hash,undefined);assert.equal(dashboard.orders[0].wallet_challenge,undefined);
+ await db.exec('set role anon');await assert.rejects(()=>db.query('select * from raffle_receipts'),/permission denied/);await assert.rejects(()=>db.query("select raffle_admin_payments('', 'all',true,0)"),/permission denied/);
+ }finally{await db.close()}},20000);

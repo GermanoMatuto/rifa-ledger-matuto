@@ -1,0 +1,11 @@
+# Pagamentos, administração e comprovantes
+
+O painel `/admin/pagamentos` exige sessão Supabase com e-mail confirmado e incluído em `RAFFLE_ADMIN_EMAILS`, configurado somente no servidor. Sessão de visitante, endereço de carteira, e-mail digitado e lista de teste não concedem permissão administrativa. A API usa `no-store`, retorna campos explícitos e pagina 50 pedidos por vez. Pesquisa por comprador, contato, número ou transação; filtros por status e inclusão de testes. Totais seguem os filtros. Os números exibidos são os gravados no pedido, e não a seleção do navegador.
+
+Carteiras conectadas: o servidor confere recibo finalizado, rede, contrato, destinatário, valor e remetente. A função de confirmação exige prova por assinatura anterior vinculada ao pedido, txid único e números ainda atribuídos à reserva. Divergências, valores tardios, perda da reserva e pagamentos sem prova de titularidade permanecem em análise. A confirmação é idempotente e auditada como `automatic:wallet-proof`.
+
+A transição para `paid` enfileira exatamente um comprovante por pedido, com destinatário e dados persistidos. O e-mail informa valor, pedido, números comprados, txid e link de acompanhamento. Testes são identificados expressamente e não geram participação. A aplicação envia pela Resend usando domínio verificado `mail.investidormatuto.com`, com chave de idempotência por pedido. Falhas temporárias entram em tentativas com espera; leases impedem duas execuções simultâneas de enviar o mesmo item. A janela de tentativas fica abaixo da retenção de 24 horas da chave no provedor. “Enviado” significa aceito pelo provedor, não garantia de leitura ou chegada à caixa de entrada.
+
+O worker `POST /api/raffle/internal/receipts` exige segredo separado `RAFFLE_WORKER_SECRET`. Ele confere até cinco pagamentos com carteira vinculada por execução e processa até cinco e-mails. O cron do Supabase o chama a cada minuto; o segredo fica no Vault e na variável de servidor, nunca no cliente ou repositório. O envio também é tentado imediatamente na confirmação pelo checkout. O status de envio aparece no painel.
+
+As vendas públicas permanecem fechadas. O teste de 1 USDT não consome números reais. Nenhum painel permite movimentar fundos ou aprovar divergências sem conferência.

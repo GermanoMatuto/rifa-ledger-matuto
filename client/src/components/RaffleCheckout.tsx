@@ -35,6 +35,7 @@ export default function RaffleCheckout({ numbers, tracking = false, testMode = f
   async function loadOrders() { const data = await api("/orders"); setOrders(data.orders); return data.orders as Order[]; }
   const hasPending = orders.some(order => order.status === "reserved" || order.status === "review");
   function detectionText(data: { state: string; caughtUp?: boolean; message?: string }) {
+    if (data.state === "paid") return "Pagamento confirmado automaticamente. Seu pedido está atualizado.";
     if (data.state === "review") return "Recebimento localizado e verificado. A vinculação ao pedido está em análise.";
     if (data.state === "needs_txid" || data.state === "ambiguous") return "Há depósito compatível na carteira. Informe seu txid para identificar sua transferência; um valor igual não identifica o comprador.";
     if (data.state === "pending") return data.message || "Transação capturada. Aguardando confirmação na rede.";
@@ -49,12 +50,12 @@ export default function RaffleCheckout({ numbers, tracking = false, testMode = f
       void api("/orders").then(async data => {
         if (!mounted) return;
         setOrders(data.orders);
-        const pending: Order[] = data.orders.filter((order: Order) => order.status === "reserved" && (detectionEnabled || order.wallet_txid)).slice(0,3);
+        const pending: Order[] = data.orders.filter((order: Order) => (order.status === "reserved" && detectionEnabled) || (["reserved","review"].includes(order.status) && order.wallet_txid)).slice(0,3);
         await Promise.allSettled(pending.map(async order => {
           try {
             const result = await api(`/orders/${order.id}/detect`, {});
             if (mounted) setDetection(previous=>({...previous,[order.id]:detectionText(result)}));
-            if (result.state === "review" && mounted) { const updated = await api("/orders"); if (mounted) setOrders(updated.orders); }
+            if (["review","paid"].includes(result.state) && mounted) { const updated = await api("/orders"); if (mounted) setOrders(updated.orders); }
           } catch { if (mounted) setDetection(previous=>({...previous,[order.id]:"Busca automática indisponível no momento. Você pode informar o txid; não reenvie o pagamento."})); }
         }));
       }).catch(() => {});
@@ -133,7 +134,7 @@ export default function RaffleCheckout({ numbers, tracking = false, testMode = f
           <small>Obrigatório ao pagar sem conectar. Copie o hash da transação no histórico da carteira ou da exchange.</small>
         </form> : null}
         {!order.txid && (detectionEnabled || walletHash) && <div className="ledger-payment-tracking">{(detection[order.id] || walletHash) && <p role="status">{detection[order.id] || "Transação enviada. Aguarde a confirmação da rede; não pague novamente."}</p>}<button type="button" className="ledger-text-button" disabled={busy} onClick={()=>void run(async()=>{const result=await api(`/orders/${order.id}/detect`,{});setDetection(previous=>({...previous,[order.id]:detectionText(result)}));await loadOrders();})}>Já pagou? Conferir pagamento</button></div>}
-        <details className="ledger-order-details"><summary>Detalhes e acompanhamento do pedido</summary><p>Pedido <code>{order.id}</code></p><p>{order.is_test ? "Número TESTE-0001 · não participa da rifa" : `Números: ${order.numbers.map(n => String(n).padStart(4,"0")).join(", ")}`}</p><p>Total: <strong>{money(order.total_cents)} em {order.symbol}</strong></p><p>Contrato USDT: <code>{order.token_address}</code></p><p>O pedido fica salvo neste navegador. Para recuperar em outro dispositivo, confirme seu e-mail.</p><p>A busca automática funciona enquanto esta página está aberta e ao voltar para ela. Recebimentos passam por análise de titularidade. A participação só é confirmada quando o status indicar “Participação confirmada”.</p><p>Envie o valor líquido exato. Confira taxas e mínimo de saque na exchange. Guarde o registro da transferência.</p><button type="button" className="ledger-secondary" disabled={busy} onClick={()=>void run(async()=>{await loadOrders();})}>Atualizar pagamento</button></details>
+        <details className="ledger-order-details"><summary>Detalhes e acompanhamento do pedido</summary><p>Pedido <code>{order.id}</code></p><p>{order.is_test ? "Número TESTE-0001 · não participa da rifa" : `Números: ${order.numbers.map(n => String(n).padStart(4,"0")).join(", ")}`}</p><p>Total: <strong>{money(order.total_cents)} em {order.symbol}</strong></p><p>Contrato USDT: <code>{order.token_address}</code></p><p>O pedido fica salvo neste navegador. Para recuperar em outro dispositivo, confirme seu e-mail.</p><p>A busca automática funciona enquanto esta página está aberta e ao voltar para ela. Pagamentos com carteira vinculada por assinatura são confirmados automaticamente após validar remetente, valor, rede e finalização. Divergências e pagamentos sem prova de titularidade ficam em análise. A participação só é confirmada quando o status indicar “Participação confirmada”.</p><p>Envie o valor líquido exato. Confira taxas e mínimo de saque na exchange. Guarde o registro da transferência.</p><button type="button" className="ledger-secondary" disabled={busy} onClick={()=>void run(async()=>{await loadOrders();})}>Atualizar pagamento</button></details>
       </article>; })}
       {(orders.length>0 || current) && <div className="ledger-order-actions"><Link href="/meus-pedidos">Ver todos os meus pedidos</Link><button type="button" className="ledger-secondary" disabled={busy} onClick={()=>void run(async()=>{await api("/auth/logout",{});setOrders([]);setRecovery(tracking);setSent(false);setCode("");})}>Sair deste dispositivo</button></div>}
       {tracking && !orders.length && !recovery && <p>Nenhum pedido encontrado para este e-mail.</p>}

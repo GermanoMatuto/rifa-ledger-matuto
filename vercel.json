@@ -11,6 +11,10 @@
   },
   "rewrites": [
     {
+      "source": "/admin/pagamentos",
+      "destination": "/index.html"
+    },
+    {
       "source": "/api/raffle/:path*",
       "destination": "/api/raffle/[...path]"
     },
@@ -47,4 +51,3 @@
     }
   ]
 }
-

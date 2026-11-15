@@ -17,18 +17,20 @@ export default function CheckoutPage({ tracking = false }: { tracking?: boolean 
     <header className="ledger-header"><Link href="/" className="ledger-brand">INVESTIDOR <span>MATUTO</span></Link><Link href="/" className="ledger-back"><ArrowLeft size={16}/>Voltar aos números</Link></header>
     <main className="ledger-checkout-main">
       <span className="ledger-eyebrow">{tracking ? 'ACOMPANHE SEU PEDIDO' : testMode ? 'TESTE DO ORGANIZADOR' : 'FINALIZE SUA ESCOLHA'}</span>
-      <h1>{tracking ? 'Meus pedidos' : testMode ? 'Teste de pagamento · 1 USDT' : 'Falta pouco para concluir.'}</h1>
-      <p className="ledger-checkout-intro">{tracking ? 'Retome neste navegador ou confirme seu e-mail para recuperar seus pedidos.' : 'Confira o resumo, informe seu contato e siga direto para o QR code. Sem criar senha.'}</p>
+      <h1>{tracking ? 'Meus pedidos' : testMode ? 'Checkout de teste' : 'Finalize seu pedido'}</h1>
+      <p className="ledger-checkout-intro">{tracking ? 'Retome neste navegador ou confirme seu e-mail para recuperar seus pedidos.' : 'Seus dados, pagamento e confirmação. Sem criar senha.'}</p>
       {!tracking && !testMode && !numbers.length ? <section className="ledger-number-panel"><h2>Escolha seus números primeiro.</h2><p>Nenhuma seleção foi encontrada neste navegador.</p><Link href="/" className="ledger-primary">Escolher números</Link><Link href="/meus-pedidos">Já fiz um pedido</Link></section> : <div className={tracking ? 'ledger-tracking-layout' : 'ledger-checkout-layout'}>
         {!tracking && <aside className="ledger-summary ledger-checkout-summary">
           <div className="ledger-summary-prize"><Gift size={26}/><div><strong>{testMode ? 'Teste de recebimento' : 'Ledger Nano Gen5'}</strong><small>{testMode ? 'Sem participação na rifa' : 'Nova, lacrada e com frete incluso'}</small></div></div>
-          <h2>Resumo do pedido</h2><p>{testMode ? '1 número de teste' : `${numbers.length} número(s) selecionado(s)`}</p>
+          <div className="ledger-total-row"><span>{testMode ? 'Total do teste' : 'Total do pedido'}</span><strong>{formatUSD(subtotal-discount)}</strong></div>
+          <p className="ledger-summary-network">USDT · BNB Smart Chain (BEP-20)</p>
+          <details className="ledger-summary-details"><summary>{testMode ? 'Ver número de teste' : `Ver ${numbers.length} número(s) e valores`}</summary>
           <div className="ledger-checkout-numbers">{testMode ? <span>TESTE-0001</span> : numbers.map(n=><span key={n}>{String(n).padStart(4,'0')}</span>)}</div>
           {!testMode && <Link className="ledger-edit-selection" href="/">Alterar números</Link>}
           <div className="ledger-price-breakdown"><div><span>Subtotal</span><span>{formatUSD(subtotal)}</span></div>{!testMode && <div className={discount ? 'ledger-discount-active' : ''}><span>Desconto {discount ? `(${rate}%)` : ''}</span><span>{discount ? '− ' : ''}{formatUSD(discount)}</span></div>}</div>
-          <div className="ledger-total-row"><span>Total</span><strong>{formatUSD(subtotal-discount)}</strong></div>
-          <div className="ledger-checkout-note"><ShieldCheck size={18}/><span>USDT · BNB Smart Chain (BEP-20). Taxa de saque ou rede separada. {testMode ? 'Teste com moeda real, sem reservar números da campanha.' : 'O pedido só é reservado quando o servidor confirma a disponibilidade.'}</span></div>
           {!testMode && <><p className="ledger-local-note">{DRAW_RULE}</p><p className="ledger-local-note">{DRAW_TIME_NOTE} Vendas públicas ainda fechadas.</p></>}
+          </details>
+          <div className="ledger-checkout-note"><ShieldCheck size={18} aria-hidden="true"/><span>{testMode ? 'Teste com moeda real. Não participa da rifa.' : 'Nova e lacrada. Frete por conta do organizador.'}</span></div>
         </aside>}
         <div className="ledger-number-panel ledger-checkout-form"><RaffleCheckout numbers={numbers} tracking={tracking} testMode={testMode}/></div>
       </div>}

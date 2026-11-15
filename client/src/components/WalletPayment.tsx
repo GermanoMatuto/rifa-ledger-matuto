@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { QRCodeSVG } from "qrcode.react";
+import { Wallet as WalletIcon, Smartphone, ChevronRight, ShieldCheck, X, CheckCircle2 } from "lucide-react";
 import { getWalletConnect, walletConnectAdapter, walletConnectNamespaces, walletConnectProjectId } from "@/lib/walletconnect";
 import { connectWallet, sendWalletPayment, signWalletLink, type WalletProvider, type PaymentRequest } from "@/lib/wallet-payment";
 
@@ -16,6 +17,9 @@ export default function WalletPayment({ order, capturedTxid, api, onCaptured }: 
   const [remoteWallet, setRemoteWallet] = useState<Wallet | null>(null);
   const [pairingUri, setPairingUri] = useState("");
   const [pairingMessage, setPairingMessage] = useState("");
+  const [modalOpen, setModalOpen] = useState(false);
+  const modal = useRef<HTMLDialogElement>(null);
+  const connectionEpoch = useRef(0);
   const cancelPairing = useRef<(() => void) | null>(null);
   const disconnectRemote = useRef<(() => Promise<void>) | null>(null);
   const hash = capturedTxid || localTxid;
@@ -33,8 +37,16 @@ export default function WalletPayment({ order, capturedTxid, api, onCaptured }: 
   }, []);
   const wallet = remoteWallet || wallets.find(item => item.id === selected) || wallets[0];
   useEffect(() => () => cancelPairing.current?.(), []);
+  useEffect(() => {
+    const dialog = modal.current;
+    if (modalOpen && dialog && !dialog.open) dialog.showModal();
+    if (!modalOpen && dialog?.open) dialog.close();
+  }, [modalOpen]);
+  function closeModal() { connectionEpoch.current++; cancelPairing.current?.(); setModalOpen(false); }
   async function connectRemote() {
+    const epoch = connectionEpoch.current;
     const provider = await getWalletConnect();
+    if (epoch !== connectionEpoch.current) throw new Error("Conexão cancelada.");
     const showUri = (uri: string) => { setPairingUri(uri); setPairingMessage(""); };
     provider.on("display_uri", showUri);
     let cancelled = false;
@@ -54,6 +66,7 @@ export default function WalletPayment({ order, capturedTxid, api, onCaptured }: 
       const account = await connectWallet(adapter, Number(order.chain_id));
       setRemoteWallet({ id: "walletconnect", name: "WalletConnect", provider: adapter });
       setAddress(account);
+      setModalOpen(false);
       disconnectRemote.current = async () => { if (provider.session) await provider.disconnect(); };
     } finally {
       cancelPairing.current = null; provider.removeListener("display_uri", showUri); setPairingUri("");
@@ -67,26 +80,16 @@ export default function WalletPayment({ order, capturedTxid, api, onCaptured }: 
   }
   const amount = new Intl.NumberFormat("pt-BR", { minimumFractionDigits: 2 }).format(order.total_cents / 100);
   return <div className="ledger-wallet-payment">
-    <p className="ledger-wallet-security"><strong>Você mantém o controle da sua carteira.</strong><br/>Não temos acesso à sua seed ou chave privada. A conexão permite consultar seu endereço público e solicitar este pagamento. Você confirma cada solicitação na própria carteira. Não pedimos aprovação ilimitada de tokens.</p>
-    {wallets.length > 1 && !address && <label>Escolha sua carteira<select value={selected || wallets[0]?.id} disabled={busy} onChange={event => {setSelected(event.target.value);setAddress("");}}>{wallets.map(item=><option key={item.id} value={item.id}>{item.name}</option>)}</select></label>}
     {hash ? <><p>Transação capturada. Aguarde a confirmação na rede; não pague novamente.</p><code>{hash}</code><button type="button" className="ledger-secondary" disabled={busy} onClick={()=>void act(()=>onCaptured(hash))}>Atualizar transação capturada</button></> : uncertain ? <>
       <p>Uma solicitação de pagamento foi aberta, mas ainda não temos o resultado. Confira o histórico da carteira antes de tentar outro pagamento.</p>
       <label>Recuperar txid do histórico<input value={recoveryHash} maxLength={66} onChange={event=>setRecoveryHash(event.target.value.trim())}/></label>
       <button type="button" className="ledger-secondary" disabled={busy || !/^0x[0-9a-fA-F]{64}$/.test(recoveryHash)} onClick={()=>void act(()=>onCaptured(recoveryHash))}>Acompanhar esta transação</button>
     </> : !address ? <>
-      <button type="button" className="ledger-primary" disabled={busy || !wallet} onClick={()=>void act(async()=>{if(wallet)setAddress(await connectWallet(wallet.provider,Number(order.chain_id)));})}>{busy ? "Abra sua carteira…" : "Conectar carteira do navegador"}</button>
-      {walletConnectProjectId && <button type="button" className="ledger-secondary" disabled={busy} onClick={()=>void act(connectRemote)}>Conectar pelo WalletConnect</button>}
-      {!wallet && <p>Use o WalletConnect para conectar sua carteira ou escolha pagar sem conectar.</p>}
-      {pairingUri && <section className="ledger-walletconnect-pairing" aria-label="Conectar pelo WalletConnect">
-        <p><strong>Abra o WalletConnect na sua carteira e leia este QR.</strong><br/>Este QR conecta a carteira; o pagamento será solicitado depois.</p>
-        <QRCodeSVG value={pairingUri} size={230} style={{maxWidth:"100%",height:"auto"}} marginSize={4} bgColor="#ffffff" fgColor="#000000" title="QR para conectar a carteira via WalletConnect"/>
-        <p>No mesmo celular, copie o código e cole na opção WalletConnect da sua carteira.</p>
-        <button type="button" className="ledger-secondary" onClick={()=>void navigator.clipboard.writeText(pairingUri).then(()=>setPairingMessage("Código de conexão copiado."),()=>setPairingMessage("Não foi possível copiar. Use a leitura do QR."))}>Copiar código de conexão</button>
-        <button type="button" className="ledger-secondary" onClick={()=>cancelPairing.current?.()}>Cancelar conexão</button>
-        {pairingMessage && <p role="status">{pairingMessage}</p>}
-      </section>}
+      <div className="ledger-connect-intro"><span className="ledger-connect-symbol"><WalletIcon size={26} aria-hidden="true"/></span><h3>Pague pela sua carteira</h3><p>Conecte, confira o valor e aprove na carteira.<br/>O txid será preenchido automaticamente.</p></div>
+      <button type="button" className="ledger-primary" disabled={busy} onClick={()=>{setMessage("");setModalOpen(true);}}><WalletIcon size={18} aria-hidden="true"/>{busy ? "Conectando…" : "Conectar carteira"}</button>
+      <p className="ledger-connect-support">WalletConnect e carteiras instaladas no navegador</p>
     </> : <>
-      <p>Carteira selecionada: <code>{address}</code></p>
+      <p className="ledger-connected-account"><CheckCircle2 size={18} aria-hidden="true"/>Conectada <code title={address}>{address.slice(0,6)}…{address.slice(-4)}</code></p>
       <p><strong>{amount} USDT · BNB Smart Chain (BEP-20)</strong><br/>Destinatário: <code>{order.recipient}</code><br/>A taxa de rede em BNB é separada e aparece na carteira.</p>
       <p>Serão duas confirmações: primeiro uma assinatura para vincular a carteira ao pedido, sem transferir fundos; depois a transferência exata de USDT.</p>
       <button type="button" className="ledger-primary" disabled={busy} onClick={()=>void act(async()=>{
@@ -111,6 +114,31 @@ export default function WalletPayment({ order, capturedTxid, api, onCaptured }: 
       })}>{busy ? "Confira as solicitações na carteira…" : `Confirmar vínculo e pagar ${amount} USDT`}</button>
       <button type="button" className="ledger-secondary" disabled={busy} onClick={()=>void act(async()=>{await disconnectRemote.current?.();disconnectRemote.current=null;setRemoteWallet(null);setAddress("");})}>Escolher outra carteira</button>
     </>}
-    {message && <p role="status">{message}</p>}
+    <p className="ledger-wallet-security"><ShieldCheck size={16} aria-hidden="true"/><span>Sua carteira continua sob seu controle. Não temos acesso à sua seed ou chave privada.</span></p>
+    <details className="ledger-wallet-permissions"><summary>O que a conexão permite?</summary><p>Consultar seu endereço público e solicitar a assinatura do vínculo com o pedido e a transferência exata de USDT. Você aprova cada solicitação na carteira. Não pedimos aprovação ilimitada de tokens.</p></details>
+    {message && !modalOpen && <p role="status" className="ledger-inline-feedback">{message}</p>}
+    <dialog ref={modal} className="ledger-wallet-modal" aria-labelledby={`wallet-title-${order.id}`} onKeyDown={event=>{
+      if(event.key!=="Tab")return;
+      const controls=Array.from(event.currentTarget.querySelectorAll<HTMLButtonElement>('button:not(:disabled),a[href],input:not(:disabled),summary,[tabindex="0"]')).filter(el=>el.getClientRects().length);
+      const first=controls[0],last=controls[controls.length-1];
+      if(first && ((event.shiftKey && document.activeElement===first)||(!event.shiftKey && document.activeElement===last))){event.preventDefault();(event.shiftKey?last:first).focus();}
+    }} onCancel={event=>{event.preventDefault();closeModal();}} onClick={event=>{if(event.target===event.currentTarget) {const rect=event.currentTarget.getBoundingClientRect();if(event.clientX<rect.left||event.clientX>rect.right||event.clientY<rect.top||event.clientY>rect.bottom)closeModal();}}}>
+      <header className="ledger-wallet-modal-header"><div><h2 id={`wallet-title-${order.id}`}>{pairingUri ? "Conectar com WalletConnect" : "Conectar carteira"}</h2><p>{pairingUri ? "Aprove a conexão no app da sua carteira." : "Escolha como deseja conectar."}</p></div><button type="button" className="ledger-icon-button" aria-label="Fechar conexão" onClick={closeModal}><X size={20} aria-hidden="true"/></button></header>
+      {pairingUri ? <section className="ledger-walletconnect-pairing" aria-label="Conectar pelo WalletConnect">
+        <div className="ledger-pairing-qr"><QRCodeSVG value={pairingUri} size={250} marginSize={4} bgColor="#ffffff" fgColor="#000000" title="QR para conectar a carteira via WalletConnect"/></div>
+        <p>Leia o QR pela opção <strong>WalletConnect</strong> da sua carteira. Este QR conecta; ele não transfere valores.</p>
+        <button type="button" className="ledger-secondary" onClick={()=>void navigator.clipboard.writeText(pairingUri).then(()=>setPairingMessage("Código de conexão copiado."),()=>setPairingMessage("Não foi possível copiar. Use a leitura do QR."))}>Copiar código de conexão</button>
+        <p className="ledger-modal-hint">No mesmo celular? Cole o código na opção WalletConnect da carteira.</p>
+        <button type="button" className="ledger-text-button" onClick={()=>cancelPairing.current?.()}>Cancelar conexão</button>
+        {pairingMessage && <p role="status">{pairingMessage}</p>}
+      </section> : <div className="ledger-wallet-options">
+        {walletConnectProjectId && <button type="button" className="ledger-wallet-option" disabled={busy} onClick={()=>void act(connectRemote)}><span className="ledger-wallet-option-icon"><Smartphone size={23} aria-hidden="true"/></span><span><strong>WalletConnect</strong><small>Conectar pelo app ou QR code</small></span><ChevronRight size={19} aria-hidden="true"/></button>}
+        {wallets.map(item=><button type="button" className="ledger-wallet-option" key={item.id} disabled={busy} onClick={()=>void act(async()=>{setSelected(item.id);setRemoteWallet(null);setAddress(await connectWallet(item.provider,Number(order.chain_id)));setModalOpen(false);})}><span className="ledger-wallet-option-icon"><WalletIcon size={23} aria-hidden="true"/></span><span><strong>{item.name}</strong><small>Disponível neste navegador</small></span><ChevronRight size={19} aria-hidden="true"/></button>)}
+        {busy && <p role="status">Preparando conexão… Confira sua carteira.</p>}
+        {!wallets.length && !walletConnectProjectId && <p>Nenhuma carteira disponível. Use o pagamento sem conectar.</p>}
+      </div>}
+      {message && <p role="status" className="ledger-inline-feedback">{message}</p>}
+      <footer className="ledger-wallet-modal-footer"><ShieldCheck size={16} aria-hidden="true"/>Conectar não movimenta seus fundos.</footer>
+    </dialog>
   </div>;
 }

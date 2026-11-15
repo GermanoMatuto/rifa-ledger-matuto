@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Link } from "wouter";
 import PaymentQr from "./PaymentQr";
 import WalletPayment from "./WalletPayment";
+import { Wallet, ArrowUpRight, Check, Clock3 } from "lucide-react";
 
 type Order = { id: string; numbers: number[]; status: string; total_cents: number; symbol: string; recipient: string; chain_id: number; token_address: string; decimals: number; expires_at: string; txid: string | null; is_test?: boolean; wallet_txid?: string | null };
 function savedWalletTx(id: string) { try { const hash = localStorage.getItem(`matuto-payment-tx:${id}`); return hash && /^0x[0-9a-fA-F]{64}$/.test(hash) ? hash : null; } catch { return null; } }
@@ -81,7 +82,7 @@ export default function RaffleCheckout({ numbers, tracking = false, testMode = f
         <form onSubmit={event => { event.preventDefault(); void run(async () => {
           const data = await api("/guest/orders", { email, name, phone, whatsapp, contactConsent: true, numbers: testMode ? [] : numbers, test: testMode });
           setOrders(previous => [data.order, ...previous.filter(order => order.id !== data.order.id)]);
-          setMessage("Pedido criado. Confira a rede e o valor antes de transferir.");
+          setMessage("");
         }); }}>
           <label>Nome completo<input autoComplete="name" required minLength={2} maxLength={100} value={name} onChange={event => setName(event.target.value)} disabled={busy}/></label>
           <label>E-mail<input type="email" autoComplete="email" required maxLength={254} value={email} onChange={event => setEmail(event.target.value)} disabled={busy}/></label>
@@ -109,35 +110,30 @@ export default function RaffleCheckout({ numbers, tracking = false, testMode = f
       </div>}
       {shownOrders.map(order => {
         const walletHash = order.wallet_txid || walletPending[order.id] || savedWalletTx(order.id);
-        const method = walletHash || hasWalletAttempt(order.id) ? "wallet" : methods[order.id] || "external";
+        const method = walletHash || hasWalletAttempt(order.id) ? "wallet" : methods[order.id] || "wallet";
         return <article className="ledger-order" key={order.id}>
-        <h2>{order.is_test && order.status === "paid" ? "Teste confirmado" : statuses[order.status] || "Em acompanhamento"}</h2>
-        <p>Pedido <code>{order.id}</code></p>
-        <p>{order.is_test ? "Número TESTE-0001 · não participa da rifa" : `Números: ${order.numbers.map(n => String(n).padStart(4,"0")).join(", ")}`}</p>
-        <p>Total: <strong>{money(order.total_cents)} em {order.symbol}</strong></p>
+        <div className="ledger-order-heading"><div><span className="ledger-payment-status"><Clock3 size={14} aria-hidden="true"/>{order.is_test && order.status === "paid" ? "Teste confirmado" : statuses[order.status] || "Em acompanhamento"}</span><h2>{order.status === "reserved" ? "Escolha como pagar" : "Acompanhe seu pagamento"}</h2></div><div className="ledger-payable"><strong>{(order.total_cents/100).toLocaleString("pt-BR",{minimumFractionDigits:2})} {order.symbol}</strong><span>BNB Smart Chain · BEP-20</span></div></div>
+        {order.is_test && <p className="ledger-test-inline">Teste com 1 USDT real · sem participação na rifa</p>}
         {order.status === "reserved" && <>
-          {!walletHash && !hasWalletAttempt(order.id) && <fieldset className="ledger-payment-methods"><legend>Como deseja pagar?</legend><label><input type="radio" name={`method-${order.id}`} checked={method==="wallet"} onChange={()=>setMethods(previous=>({...previous,[order.id]:"wallet"}))}/>Conectar carteira · txid automático</label><label><input type="radio" name={`method-${order.id}`} checked={method==="external"} onChange={()=>setMethods(previous=>({...previous,[order.id]:"external"}))}/>Pagar sem conectar · informar txid</label></fieldset>}
+          {!walletHash && !hasWalletAttempt(order.id) && <fieldset className="ledger-payment-methods ledger-method-cards"><legend className="ledger-sr-only">Como deseja pagar?</legend><label className={method==="wallet" ? "is-active" : ""}><input type="radio" aria-label="Conectar carteira · txid automático" name={`method-${order.id}`} checked={method==="wallet"} onChange={()=>setMethods(previous=>({...previous,[order.id]:"wallet"}))}/><Wallet size={21} aria-hidden="true"/><span><strong>Carteira cripto</strong><small>WalletConnect ou navegador</small></span><Check size={16} className="ledger-method-check" aria-hidden="true"/></label><label className={method==="external" ? "is-active" : ""}><input type="radio" aria-label="Pagar sem conectar · informar txid" name={`method-${order.id}`} checked={method==="external"} onChange={()=>setMethods(previous=>({...previous,[order.id]:"external"}))}/><ArrowUpRight size={21} aria-hidden="true"/><span><strong>Transferir sem conectar</strong><small>Carteira ou saque de exchange</small></span><Check size={16} className="ledger-method-check" aria-hidden="true"/></label></fieldset>}
           {method === "wallet" ? <WalletPayment order={order} capturedTxid={walletHash} api={api} onCaptured={async hash=>{
             setWalletPending(previous=>({...previous,[order.id]:hash}));
             await api(`/orders/${order.id}/wallet/transaction`,{txid:hash});
             await loadOrders();
             setDetection(previous=>({...previous,[order.id]:"Txid capturado automaticamente. Aguardando confirmação na rede; não pague novamente."}));
           }}/> : <>
-            <p><strong>Você não precisa conectar sua carteira.</strong> Use o QR ou copie o endereço. Depois da transferência, você deve informar o txid (hash da transação) para localizarmos e conferirmos o pagamento. Não temos acesso à sua carteira, seed ou chave privada.</p>
+            <p className="ledger-external-intro">Envie USDT pela rede BEP-20. Depois, informe o txid para identificar e conferir sua transferência.</p>
             <PaymentQr recipient={order.recipient} symbol={order.symbol} chainId={order.chain_id} totalCents={order.total_cents} expiresAt={order.expires_at}/>
           </>}
-          <p>Prazo do pagamento: {new Date(order.expires_at).toLocaleString("pt-BR")}. A taxa de saque é separada: o valor líquido recebido deve corresponder ao pedido. Confira o mínimo de saque da exchange antes de enviar.</p>
-          <details><summary>Conferir contrato do USDT</summary><code>{order.token_address}</code></details>
+          <p className="ledger-payment-deadline"><Clock3 size={15} aria-hidden="true"/>Pague até {new Date(order.expires_at).toLocaleTimeString("pt-BR",{hour:"2-digit",minute:"2-digit"})} de {new Date(order.expires_at).toLocaleDateString("pt-BR")} · taxa de rede ou saque à parte.</p>
         </>}
         {order.txid ? <p>Txid: <code>{order.txid}</code></p> : !walletHash && method === "external" ? <form onSubmit={event => { event.preventDefault(); void run(async () => { const data = await api(`/orders/${order.id}/transfer`,{txid:txids[order.id]}); await loadOrders();setMessage(data.message); }); }}>
           <label>Já transferi · informar txid<input required pattern="0x[0-9a-fA-F]{64}" maxLength={66} value={txids[order.id] || ""} onChange={event => setTxids(previous=>({...previous,[order.id]:event.target.value.trim()}))}/></label>
           <button className="ledger-secondary" disabled={busy}>Verificar recebimento</button>
           <small>Obrigatório ao pagar sem conectar. Copie o hash da transação no histórico da carteira ou da exchange.</small>
         </form> : null}
-        {!order.txid && (detectionEnabled || walletHash) && <><p role="status">{detection[order.id] || (walletHash ? "Transação enviada. A confirmação depende da rede; não pague novamente." : "A busca de depósitos funciona enquanto esta página está aberta e ao voltar para ela. Sem conexão, informe seu txid para vincular a transferência.")}</p><button type="button" className="ledger-secondary" disabled={busy} onClick={()=>void run(async()=>{const result=await api(`/orders/${order.id}/detect`,{});setDetection(previous=>({...previous,[order.id]:detectionText(result)}));await loadOrders();})}>Já enviei · conferir na rede</button></>}
-        <p>O pedido fica salvo neste navegador. Ao voltar do app da carteira ou exchange, você pode continuar daqui. Para recuperar em outro dispositivo, confirme seu e-mail.</p>
-        <p>{order.is_test ? "Teste de recebimento, sem compra de participação." : "A participação só está confirmada quando o status indicar “Participação confirmada”."} Recebimentos passam por análise de titularidade. Guarde o registro do saque.</p>
-        <button type="button" className="ledger-secondary" disabled={busy} onClick={()=>void run(async()=>{await loadOrders();})}>Atualizar pagamento</button>
+        {!order.txid && (detectionEnabled || walletHash) && <div className="ledger-payment-tracking">{(detection[order.id] || walletHash) && <p role="status">{detection[order.id] || "Transação enviada. Aguarde a confirmação da rede; não pague novamente."}</p>}<button type="button" className="ledger-text-button" disabled={busy} onClick={()=>void run(async()=>{const result=await api(`/orders/${order.id}/detect`,{});setDetection(previous=>({...previous,[order.id]:detectionText(result)}));await loadOrders();})}>Já pagou? Conferir pagamento</button></div>}
+        <details className="ledger-order-details"><summary>Detalhes e acompanhamento do pedido</summary><p>Pedido <code>{order.id}</code></p><p>{order.is_test ? "Número TESTE-0001 · não participa da rifa" : `Números: ${order.numbers.map(n => String(n).padStart(4,"0")).join(", ")}`}</p><p>Total: <strong>{money(order.total_cents)} em {order.symbol}</strong></p><p>Contrato USDT: <code>{order.token_address}</code></p><p>O pedido fica salvo neste navegador. Para recuperar em outro dispositivo, confirme seu e-mail.</p><p>A busca automática funciona enquanto esta página está aberta e ao voltar para ela. Recebimentos passam por análise de titularidade. A participação só é confirmada quando o status indicar “Participação confirmada”.</p><p>Envie o valor líquido exato. Confira taxas e mínimo de saque na exchange. Guarde o registro da transferência.</p><button type="button" className="ledger-secondary" disabled={busy} onClick={()=>void run(async()=>{await loadOrders();})}>Atualizar pagamento</button></details>
       </article>; })}
       {(orders.length>0 || current) && <div className="ledger-order-actions"><Link href="/meus-pedidos">Ver todos os meus pedidos</Link><button type="button" className="ledger-secondary" disabled={busy} onClick={()=>void run(async()=>{await api("/auth/logout",{});setOrders([]);setRecovery(tracking);setSent(false);setCode("");})}>Sair deste dispositivo</button></div>}
       {tracking && !orders.length && !recovery && <p>Nenhum pedido encontrado para este e-mail.</p>}

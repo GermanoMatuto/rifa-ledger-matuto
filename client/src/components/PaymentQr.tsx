@@ -42,7 +42,7 @@ export default function PaymentQr({ recipient, symbol, chainId, totalCents, expi
       <div className="ledger-payment-details">
         <strong className="ledger-payment-amount">{amount} {symbol}</strong>
         <p>Rede: <strong>{Number(chainId) === 56 ? "BNB Smart Chain (BEP-20)" : `EVM · ID ${chainId}`}</strong></p>
-        <p>O QR preenche apenas o endereço. Selecione a moeda, a rede e informe o valor exato antes de confirmar. Não envie BNB para pagar este pedido.</p>
+        <p>Envie exatamente {amount} {symbol}. O QR preenche apenas o endereço; confira a moeda e a rede no app.</p>
         <label htmlFor={id}>Endereço de recebimento</label>
         <input id={id} readOnly value={recipient} onFocus={(event) => event.target.select()} spellCheck={false} />
         <button type="button" className="ledger-secondary" onClick={() => void copyAddress()}>Copiar endereço</button>

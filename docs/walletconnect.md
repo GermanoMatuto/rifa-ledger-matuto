@@ -9,3 +9,11 @@ Only BNB Smart Chain (eip155:56), personal_sign, and eth_sendTransaction are req
 “Escolher outra carteira” disconnects the remote session. Reloading does not automatically reconnect or open wallet requests: the SDK is initialized after another explicit click, at which point a previously approved session can be reused. Pending transaction hashes and uncertain broadcast guards remain in place. Final payment verification is server-side and the existing review requirement remains.
 
 The connection QR is tested against the live relay without moving funds. Actual wallet approval and a real USDT transfer require a user's wallet and are separate from mocked transaction tests. The regular raffle sales switch remains closed.
+
+## Checkout interaction
+
+The wallet option is selected by default, alongside a visible external-transfer alternative. A single “Conectar carteira” button opens a native dialog listing WalletConnect and discovered browser wallets. The dialog supports Escape, keyboard focus containment and return to the opener. No wallet or relay request is started merely by displaying the dialog. The visitor explicitly selects a connection method first.
+
+The summary is compact, with the total and network always visible. Order identifiers, contract address and explanatory text are in expandable details. No payment-validation or ownership-review requirement was relaxed.
+
+Design references: [RainbowKit ConnectButton](https://rainbowkit.com/en-US/docs/connect-button), [RainbowKit modal hooks](https://rainbowkit.com/en-US/docs/modal-hooks), [Stripe stablecoin payment flow](https://docs.stripe.com/payments/stablecoin-payments), [Reown checkout UX](https://reown.com/blog/ux-roundup-june-2025). These are interaction references, not integrations or endorsements.

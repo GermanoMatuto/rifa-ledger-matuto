@@ -13,6 +13,7 @@
   "test": "vitest run --config vitest.raffle.config.ts"
  },
  "dependencies": {
+  "@walletconnect/universal-provider": "^2.26.0",
   "express": "4.22.3",
   "lucide-react": "0.453.0",
   "qrcode.react": "^4.2.0",

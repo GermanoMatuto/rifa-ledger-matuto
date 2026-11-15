@@ -10,3 +10,4 @@ export function saveSelection(numbers: number[]) {
   try { sessionStorage.setItem(SELECTION_KEY,JSON.stringify(numbers)); } catch { /* Selection still works in memory when storage is blocked. */ }
 }
 export const formatUSD=(cents:number)=>new Intl.NumberFormat('pt-BR',{style:'currency',currency:'USD'}).format(cents/100);
+export const discountPercent = (quantity: number) => quantity >= 5 ? 15 : quantity >= 3 ? 10 : 0;

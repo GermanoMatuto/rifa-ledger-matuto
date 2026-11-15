@@ -44,7 +44,10 @@ function mock(overrides: Record<string, unknown> = {}): Rpc {
 }
 describe("server payment boundary", () => {
   it("computes discount server-side and rejects duplicates", () => {
-    expect(quote([1, 2, 3]).totalCents).toBe(1200);
+    expect(quote([1, 2]).totalCents).toBe(800);
+    expect(quote([1, 2, 3]).totalCents).toBe(1080);
+    expect(quote([1, 2, 3, 4, 5]).totalCents).toBe(1700);
+    expect(quote([1, 2, 3, 4, 5, 6]).totalCents).toBe(2040);
     expect(quote([1, 2, 3, 4]).totalCents).toBe(1440);
     expect(() => quote([1, 1])).toThrow();
     expect(() => quote([1201])).toThrow();
@@ -137,3 +140,4 @@ it('validates BNB USDT using 18 decimals without floating point', async () => {
   });
   expect((await verifyTransfer(rpc, hash, {...config, chainId:56, decimals:18}, units, '2026-11-14T14:00:00Z')).units).toBe('14400000000000000000');
 });
+

@@ -9,7 +9,8 @@ export function quote(numbers: unknown) {
     throw new Error("Escolha de 1 a 50 números distintos, entre 0001 e 1200.");
   }
   const subtotalCents = numbers.length * 400;
-  const discountCents = numbers.length >= 4 ? subtotalCents / 10 : 0;
+  const discountRate = numbers.length >= 5 ? 15 : numbers.length >= 3 ? 10 : 0;
+  const discountCents = Math.round(subtotalCents * discountRate / 100);
   return {
     numbers: [...numbers].sort((a, b) => a - b) as number[],
     subtotalCents,
@@ -112,3 +113,4 @@ export async function verifyTransfer(
     paidAt: new Date(paidAt).toISOString(),
   };
 }
+

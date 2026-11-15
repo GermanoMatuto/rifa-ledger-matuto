@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, useLocation } from "wouter";
-import { readSelection, saveSelection } from "@/lib/raffle-selection";
+import { readSelection, saveSelection, discountPercent } from "@/lib/raffle-selection";
 import { DRAW_DATE, DRAW_RULE, DRAW_TIME_NOTE } from "@/lib/raffle-schedule";
 
 import { ArrowDown, ArrowLeft, ArrowRight, ChevronLeft, ChevronRight, Gift, PackageCheck, Search, ShieldCheck, Truck, X } from "lucide-react";
@@ -21,7 +21,8 @@ export default function RifaLedger() {
   const [, navigate] = useLocation();
   useEffect(() => { saveSelection(selected); }, [selected]);
   const subtotalCents = selected.length * PRICE * 100;
-  const discountCents = selected.length >= 4 ? Math.round(subtotalCents * 0.1) : 0;
+  const discountRate = discountPercent(selected.length);
+  const discountCents = Math.round(subtotalCents * discountRate / 100);
   const total = (subtotalCents - discountCents) / 100;
   const visible = useMemo(() => {
     const numbers = selectedOnly ? [...selected].sort((a, b) => a - b) : Array.from({ length: TOTAL }, (_, i) => i + 1);
@@ -34,10 +35,23 @@ export default function RifaLedger() {
 
   }
 
-  function surprise() {
+  function choosePackage(count: number) {
+    const chosen = selected.slice(0, count);
+    const available = Array.from({length: TOTAL}, (_, i) => i + 1).filter(n => !chosen.includes(n));
+    while (chosen.length < count && available.length) {
+      const index = crypto.getRandomValues(new Uint32Array(1))[0] % available.length;
+      chosen.push(available.splice(index, 1)[0]);
+    }
+    setSelected(chosen);
+    setSearch('');
+    setSelectedOnly(false);
+    setPage(Math.floor((chosen[0] - 1) / PAGE_SIZE));
+    document.getElementById('numeros')?.scrollIntoView({behavior: 'auto'});
+  }
+  function surprise(count = 5) {
     const available = Array.from({ length: TOTAL }, (_, i) => i + 1).filter(n => !selected.includes(n));
     const chosen: number[] = [];
-    for (let i = 0; i < 5 && available.length; i++) {
+    for (let i = 0; i < count && available.length; i++) {
       const index = crypto.getRandomValues(new Uint32Array(1))[0] % available.length;
       chosen.push(available.splice(index, 1)[0]);
     }
@@ -61,6 +75,7 @@ export default function RifaLedger() {
             <p>Ledger Nano Gen5 nova e lacrada.<br />Escolha seus números e acompanhe essa ação da comunidade Investidor Matuto.</p>
             <div className="ledger-retail-price"><span>Preço de referência no varejo</span><s>R$ 2.099,00</s><a href="https://kriptobr.com/" target="_blank" rel="noopener noreferrer">KriptoBR · Pix/boleto · consultado em 14/11/2026</a><small>Referência do aparelho; US$ 4 é o valor de um número, não a compra da Ledger.</small></div>
             <a className="ledger-primary ledger-hero-cta" href="#numeros">Escolher meus números <ArrowDown size={18} /></a>
+            <div className="ledger-package-ctas" aria-label="Pacotes com desconto"><button onClick={() => choosePackage(3)}><span>3 números · 10% OFF</span><strong>US$ 10,80</strong><small>Selecionar pacote de 3 <ArrowRight size={14}/></small></button><button className="ledger-best-package" onClick={() => choosePackage(5)}><span>5 números · 15% OFF</span><strong>US$ 17,00</strong><small>Selecionar pacote de 5 <ArrowRight size={14}/></small></button></div>
             <div className="ledger-hero-facts"><span><PackageCheck size={17} /> Nova e lacrada</span><span><Truck size={17} /> Frete por minha conta</span></div>
           </div>
           <div className="ledger-portrait">
@@ -78,7 +93,7 @@ export default function RifaLedger() {
           <div className="ledger-section-title"><div><span className="ledger-eyebrow">01 / ESCOLHA SEUS NÚMEROS</span><h2 id="numbers-title">Qual vai ser o seu?</h2><p>Escolha um favorito ou deixe a seleção por nossa conta.</p></div><span className="ledger-preview-badge">Prévia interativa · vendas fechadas</span></div>
           <div className="ledger-shopping-layout">
             <div className="ledger-number-panel">
-              <div className="ledger-toolbar"><label className="ledger-search"><Search size={18} /><span className="sr-only">Buscar número de 0001 a 1200</span><input inputMode="numeric" value={search} maxLength={4} placeholder="Buscar número…" onChange={e => { setSearch(e.target.value.replace(/\D/g, "")); setPage(0); }} /></label><button className="ledger-secondary" onClick={surprise} disabled={selected.length === TOTAL}>Escolher 5 para mim</button></div>
+              <div className="ledger-toolbar"><label className="ledger-search"><Search size={18} /><span className="sr-only">Buscar número de 0001 a 1200</span><input inputMode="numeric" value={search} maxLength={4} placeholder="Buscar número…" onChange={e => { setSearch(e.target.value.replace(/\D/g, "")); setPage(0); }} /></label><button className="ledger-secondary" onClick={() => surprise()} disabled={selected.length === TOTAL}>Escolher 5 para mim</button></div>
               <div className="ledger-grid-meta"><div><span className="ledger-dot" /> Disponível na prévia <span className="ledger-dot ledger-dot-selected" /> Selecionado</div><label><input type="checkbox" checked={selectedOnly} onChange={e => setSelectedOnly(e.target.checked)} /> Só meus números</label></div>
               <div className="ledger-number-grid" aria-label="Números da prévia">{visible.map(n => <button key={n} className={selected.includes(n) ? "is-selected" : ""} aria-label={`Número ${numberLabel(n)}`} aria-pressed={selected.includes(n)} onClick={() => toggle(n)}>{numberLabel(n)}</button>)}</div>
               {!visible.length && <p className="ledger-empty">{selectedOnly ? "Nenhum número selecionado com esse filtro." : "Nenhum número encontrado. Busque de 0001 a 1200."}</p>}
@@ -90,8 +105,8 @@ export default function RifaLedger() {
               <div className="ledger-summary-prize"><Gift size={25} /><div><strong>Ledger Nano Gen5</strong><small>Nova, lacrada e com frete incluso</small></div></div>
               <div className="ledger-summary-label"><span>Seus números <b>({selected.length})</b></span><button disabled={!selected.length} onClick={() => { setSelected([]);  }}>Limpar</button></div>
               <div className="ledger-chips">{selected.length ? [...selected].sort((a,b) => a-b).map(n => <button key={n} aria-label={`Remover número ${numberLabel(n)}`} onClick={() => toggle(n)}>{numberLabel(n)}<X size={12} /></button>) : <p>Seus números favoritos<br />aparecem aqui.</p>}</div>
-              <div className="ledger-discount-offer">Compre 4 ou mais números e ganhe <strong>10% de desconto.</strong></div>
-              <div className="ledger-price-breakdown" aria-live="polite"><div><span>Subtotal · {selected.length} × US$ 4,00</span><span>{usd(subtotalCents / 100)}</span></div><div className={discountCents ? "ledger-discount-active" : ""}><span>Desconto {discountCents > 0 ? "(10%)" : ""}</span><span>{discountCents > 0 ? `− ${usd(discountCents / 100)}` : usd(0)}</span></div></div>
+              <div className="ledger-discount-offer"><strong>3 a 4 números: 10% OFF</strong><br/><strong>5 ou mais números: 15% OFF</strong><span className="ledger-package-note">Desconto automático no total do pedido. Não cumulativo.</span></div>
+              <div className="ledger-price-breakdown" aria-live="polite"><div><span>Subtotal · {selected.length} × US$ 4,00</span><span>{usd(subtotalCents / 100)}</span></div><div className={discountCents ? "ledger-discount-active" : ""}><span>Desconto {discountCents > 0 ? `(${discountRate}%)` : ""}</span><span>{discountCents > 0 ? `− ${usd(discountCents / 100)}` : usd(0)}</span></div></div>
               <div className="ledger-total-row"><span>Total</span><strong aria-live="polite">{usd(total)}</strong></div>
               <button className="ledger-primary" disabled={!selected.length} onClick={() => { saveSelection(selected); navigate("/checkout"); }}>Continuar <ArrowRight size={18} /></button>
               <div className="ledger-checkout-note"><ShieldCheck size={17} /><span>Cadastro e instruções de pagamento ficam na próxima etapa.</span></div>
@@ -107,6 +122,7 @@ export default function RifaLedger() {
     </div>
   );
 }
+
 
 
 

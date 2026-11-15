@@ -11,6 +11,10 @@
   },
   "rewrites": [
     {
+      "source": "/api/raffle/:path*",
+      "destination": "/api/raffle/[...path]"
+    },
+    {
       "destination": "/index.html",
       "source": "/rifa-ledger"
     },
@@ -43,3 +47,4 @@
     }
   ]
 }
+

@@ -1,0 +1,10 @@
+{
+  "recipient": "0x6e578f4f5c137300fA256A01d2A36D2d109eE2a3",
+  "chainId": 56,
+  "network": "BNB Smart Chain (BEP-20)",
+  "tokenAddress": "0x55d398326f99059ff775485246999027b3197955",
+  "symbol": "USDT",
+  "decimals": 18,
+  "salesEnabled": false,
+  "note": "Preparação apenas. Contrato conhecido como Binance-Peg BSC-USD. Chain ID e decimals confirmados via RPC. Banco, SMTP e API ainda precisam ser configurados e testados antes de receber valores."
+}

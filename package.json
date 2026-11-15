@@ -1,0 +1,32 @@
+{
+ "name": "rifa-ledger-matuto",
+ "version": "0.1.0",
+ "private": true,
+ "type": "module",
+ "engines": {
+  "node": "24.x"
+ },
+ "scripts": {
+  "dev": "vite --host 127.0.0.1",
+  "build": "tsc --noEmit && vite build",
+  "preview": "vite preview --host 127.0.0.1",
+  "test": "vitest run --config vitest.raffle.config.ts"
+ },
+ "dependencies": {
+  "express": "4.22.3",
+  "lucide-react": "0.453.0",
+  "react": "19.2.1",
+  "react-dom": "19.2.1",
+  "wouter": "3.7.1"
+ },
+ "devDependencies": {
+  "@types/express": "4.17.21",
+  "@types/node": "24.7.0",
+  "@types/react": "19.2.1",
+  "@types/react-dom": "19.2.1",
+  "@vitejs/plugin-react": "5.0.4",
+  "typescript": "5.6.3",
+  "vite": "7.3.8",
+  "vitest": "4.1.12"
+ }
+}

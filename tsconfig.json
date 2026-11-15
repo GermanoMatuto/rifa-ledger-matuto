@@ -1,0 +1,1 @@
+{"include":["client/src","server","api","vite.config.ts","vitest.raffle.config.ts"],"compilerOptions":{"target":"ES2022","lib":["ES2022","DOM","DOM.Iterable"],"module":"ESNext","moduleResolution":"bundler","jsx":"react-jsx","strict":true,"esModuleInterop":true,"skipLibCheck":true,"noEmit":true,"types":["node","vite/client"],"baseUrl":".","paths":{"@/*":["client/src/*"]}}}

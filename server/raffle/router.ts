@@ -2,6 +2,9 @@ import express from "express";
 import { createHash, createHmac, randomBytes } from "node:crypto";
 import { isIP } from "node:net";
 import { ADDRESS, quote, TXID, verifyTransfer } from "./payment.js";
+import { makeRpc } from "./rpc.js";
+import { detectTransfers } from "./detection.js";
+import { verifyMessage } from "viem";
 
 type Order = {
   id: string;
@@ -22,6 +25,12 @@ type Order = {
   expires_at: string;
   txid: string | null;
   is_test: boolean;
+  wallet_txid: string | null;
+  wallet_address: string | null;
+  wallet_challenge: string | null;
+  wallet_challenge_address: string | null;
+  wallet_challenge_expires_at: string | null;
+  monitor_next_block: string | null;
 };
 const UUID =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -107,7 +116,7 @@ export function createRaffleRouter(env: NodeJS.ProcessEnv = process.env) {
     return value && /^[a-f0-9]{64}$/.test(value) ? value : null;
   }
   const hashGuest = (token: string) => createHash("sha256").update(token).digest("hex");
-  const orderFields = "id,numbers,status,total_cents,symbol,recipient,chain_id,token_address,decimals,created_at,expires_at,txid,buyer_phone,has_whatsapp,is_test";
+  const orderFields = "id,numbers,status,total_cents,symbol,recipient,chain_id,token_address,decimals,created_at,expires_at,txid,buyer_phone,has_whatsapp,is_test,wallet_txid,wallet_address";
   function cookie(req: express.Request) {
     return req.headers.cookie
       ?.split(";")
@@ -193,6 +202,7 @@ export function createRaffleRouter(env: NodeJS.ProcessEnv = process.env) {
       configured: ready,
       salesEnabled: enabled,
       testEnabled: ready && Boolean(env.RAFFLE_EVM_RPC_URL) && env.RAFFLE_TEST_ENABLED === "true",
+      detectionEnabled: ready && Boolean(env.RAFFLE_EVM_LOGS_RPC_URL && env.RAFFLE_EVM_RPC_URL),
       contactPolicy:
         "O telefone é privado e usado para acompanhar o pedido e entregar o prêmio. WhatsApp não é verificado automaticamente.",
     }),
@@ -319,7 +329,12 @@ export function createRaffleRouter(env: NodeJS.ProcessEnv = process.env) {
       if (!existing.length) token = null;
     }
     token ||= randomBytes(32).toString("hex");
+    let watchBlock: string | undefined;
+    if (env.RAFFLE_EVM_LOGS_RPC_URL && env.RAFFLE_EVM_RPC_URL) {
+      try { watchBlock = BigInt(await makeRpc(env.RAFFLE_EVM_RPC_URL)<string>("eth_blockNumber", [])).toString(); } catch { /* Receipt validation remains available if indexing is down. */ }
+    }
     const order = await rpcDb("raffle_create_guest_order", { p_hash: hashGuest(token), p_email: email, p_name: name, p_phone: phone, p_whatsapp: req.body.whatsapp, p_numbers: numbers, p_test: test });
+    if (watchBlock) await rpcDb("raffle_advance_scan", { p_order: order.id, p_next: watchBlock });
     if (authenticatedUser) await rpcDb("raffle_claim_guest_orders", { p_user: authenticatedUser });
     res.cookie(guestCookieName, token, { httpOnly: true, secure: env.NODE_ENV === "production", sameSite: "strict", path: "/", maxAge: 30 * 86400000 });
     const result = await request(`/rest/v1/raffle_orders?id=eq.${order.id}&select=${orderFields}`);
@@ -363,6 +378,89 @@ export function createRaffleRouter(env: NodeJS.ProcessEnv = process.env) {
       res.status(201).json({ order });
     }),
   );
+  async function ownedOrder(req: express.Request) {
+    const access = await owner(req);
+    if (!UUID.test(String(req.params.id))) throw new HttpError(400, "Pedido inválido.");
+    const rows: Order[] = await request(`/rest/v1/raffle_orders?id=eq.${req.params.id}&${access.filter}&select=*`);
+    if (!rows[0]) throw new HttpError(404, "Pedido não encontrado.");
+    return { access, order: rows[0] };
+  }
+  function openOrder(order: Order) {
+    if (order.status !== "reserved" || Date.parse(order.expires_at) <= Date.now()) throw new HttpError(409, "Este pedido não está disponível para um novo pagamento. Atualize o acompanhamento.");
+  }
+  async function recordForOwner(order: Order, access: Awaited<ReturnType<typeof owner>>, transfer: Awaited<ReturnType<typeof verifyTransfer>>) {
+    return rpcDb(access.hash ? "raffle_record_guest_transfer" : "raffle_record_transfer", { p_order: order.id, ...(access.hash ? { p_hash: access.hash } : { p_user: access.userId }), p_txid: transfer.txid, p_log: transfer.logIndex, p_block: transfer.blockHash, p_received: transfer.paidAt });
+  }
+  const unitsFor = (order: Order) => BigInt(order.total_cents) * 10n ** BigInt(order.decimals - 2);
+  const configFor = (order: Order) => ({ chainId: Number(order.chain_id), token: order.token_address, recipient: order.recipient, decimals: order.decimals });
+
+  router.post("/orders/:id/wallet/challenge", wrap(async (req, res) => {
+    const { access, order } = await ownedOrder(req); openOrder(order);
+    await limit("wallet-challenge:" + (access.userId || access.hash), 10, 900);
+    const address = String(req.body.address || "").toLowerCase();
+    if (!ADDRESS.test(address)) throw new HttpError(400, "Endereço da carteira inválido.");
+    if (order.wallet_txid) throw new HttpError(409, "Uma transação já foi enviada. Acompanhe o recebimento antes de pagar novamente.");
+    const expires = new Date(Date.now() + 5 * 60000).toISOString();
+    const message = [`Investidor Matuto: vincular carteira ao pedido`, `Site: ${origin}`, `Pedido: ${order.id}`, `Carteira: ${address}`, `Rede: ${order.chain_id}`, `Token: ${order.token_address}`, `Destinatario: ${order.recipient}`, `Valor em unidades do token: ${unitsFor(order)}`, `Nonce: ${randomBytes(32).toString("hex")}`, `Valido ate: ${expires}`, `Esta assinatura apenas comprova a titularidade da carteira para este pedido. Nao autoriza transferencias nem aprovacoes de tokens. O pagamento sera confirmado separadamente na carteira.`].join("\n");
+    await request(`/rest/v1/raffle_orders?id=eq.${order.id}&${access.filter}`, { method: "PATCH", body: JSON.stringify({ wallet_challenge: message, wallet_challenge_address: address, wallet_challenge_expires_at: expires, wallet_address: null, wallet_verified_at: null }) });
+    res.json({ message, expiresAt: expires });
+  }));
+  router.post("/orders/:id/wallet/verify", wrap(async (req, res) => {
+    const { access, order } = await ownedOrder(req); openOrder(order);
+    await limit("wallet-verify:" + (access.userId || access.hash), 10, 900);
+    const signature = String(req.body.signature || "");
+    if (!order.wallet_challenge || !order.wallet_challenge_address || !order.wallet_challenge_expires_at || Date.parse(order.wallet_challenge_expires_at) <= Date.now() || !/^0x[0-9a-fA-F]{130}$/.test(signature)) throw new HttpError(400, "A assinatura está inválida ou expirou. Conecte novamente.");
+    let valid = false;
+    try { valid = await verifyMessage({ address: order.wallet_challenge_address as `0x${string}`, message: order.wallet_challenge, signature: signature as `0x${string}` }); } catch { /* Invalid signature. */ }
+    if (!valid) throw new HttpError(401, "A assinatura não corresponde à carteira. Use o QR se sua carteira não for compatível.");
+    await request(`/rest/v1/raffle_orders?id=eq.${order.id}&${access.filter}`, { method: "PATCH", body: JSON.stringify({ wallet_address: order.wallet_challenge_address, wallet_verified_at: new Date().toISOString(), wallet_challenge: null, wallet_challenge_expires_at: null }) });
+    res.json({ address: order.wallet_challenge_address });
+  }));
+  router.post("/orders/:id/wallet/transaction", wrap(async (req, res) => {
+    const { access, order } = await ownedOrder(req);
+    await limit("wallet-tx:" + (access.userId || access.hash), 10, 900);
+    const hash = String(req.body.txid || "").toLowerCase();
+    if (!TXID.test(hash) || !order.wallet_address) throw new HttpError(400, "Confirme a carteira antes de informar a transação.");
+    if (order.wallet_txid && order.wallet_txid !== hash) throw new HttpError(409, "Uma transação já foi informada. Solicite suporte antes de enviar outra.");
+    await request(`/rest/v1/raffle_orders?id=eq.${order.id}&${access.filter}`, { method: "PATCH", body: JSON.stringify({ wallet_txid: hash }) });
+    res.json({ txid: hash, message: "Transação capturada. Aguardando confirmação na rede." });
+  }));
+  router.post("/orders/:id/detect", wrap(async (req, res) => {
+    const { access, order } = await ownedOrder(req);
+    await limit("detect:" + order.id, 6, 60);
+    if (order.txid) { res.json({ state: order.status }); return; }
+    if (!env.RAFFLE_EVM_RPC_URL) throw new HttpError(503, "Verificação da rede indisponível.");
+    const rpc = makeRpc(env.RAFFLE_EVM_RPC_URL);
+    if (order.wallet_txid) {
+      try {
+        const transfer = await verifyTransfer(rpc, order.wallet_txid, configFor(order), unitsFor(order), order.created_at);
+        if (transfer.sender !== order.wallet_address?.toLowerCase()) throw new Error("O remetente não corresponde à carteira vinculada. Solicite conferência; não envie novamente.");
+        await recordForOwner(order, access, transfer);
+        res.json({ state: "review", txid: transfer.txid });
+      } catch (error) {
+        res.json({ state: "pending", message: error instanceof Error ? error.message : "Aguardando confirmação na rede." });
+      }
+      return;
+    }
+    if (!env.RAFFLE_EVM_LOGS_RPC_URL) throw new HttpError(503, "Busca automática indisponível. Você ainda pode informar o txid.");
+    if (order.status !== "reserved" || Date.parse(order.expires_at) <= Date.now()) { res.json({ state: "expired" }); return; }
+    let detected;
+    try { detected = await detectTransfers(makeRpc(env.RAFFLE_EVM_LOGS_RPC_URL), rpc, { ...configFor(order), createdAt: order.created_at, units: unitsFor(order), nextBlock: order.monitor_next_block }); }
+    catch { throw new HttpError(503, "A busca automática está temporariamente indisponível. Você pode informar o txid sem reenviar o pagamento."); }
+    let state = "waiting";
+    for (const transfer of detected.transfers) {
+      const result = await rpcDb("raffle_detect_payment", { p_order: order.id, p_txid: transfer.txid, p_log: transfer.logIndex, p_block: transfer.blockHash, p_received: transfer.paidAt, p_units: transfer.units });
+      if (result.state === "candidate") state = "needs_txid";
+      if (result.state === "ambiguous") state = "ambiguous";
+    }
+    await rpcDb("raffle_advance_scan", { p_order: order.id, p_next: detected.nextBlock });
+    // Remember a discovered candidate while waiting for the external payer's txid.
+    if (state === "waiting") {
+      const candidates = await request(`/rest/v1/raffle_payment_events?chain_id=eq.${order.chain_id}&token_address=eq.${order.token_address}&recipient=eq.${order.recipient}&units=eq.${unitsFor(order)}&received_at=gte.${encodeURIComponent(order.created_at)}&select=txid&limit=1`);
+      if (candidates.length) state = "needs_txid";
+    }
+    res.json({ state, caughtUp: detected.caughtUp });
+  }));
   router.post(
     "/orders/:id/transfer",
     wrap(async (req, res) => {

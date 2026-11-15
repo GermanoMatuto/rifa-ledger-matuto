@@ -7,7 +7,7 @@ import {createRaffleRouter} from './router.js';
 
 it('isolates guest orders, enforces server prices and recovers only verified email',async()=>{
 const db=new PGlite();await db.exec('create role anon;create role authenticated;create role service_role;create schema auth;create table auth.users(id uuid primary key,email text,email_confirmed_at timestamptz);');
-for(const path of ['202611140001_raffle.sql','202611150001_discount_tiers.sql','202611150002_guest_checkout.sql'])await db.exec(readFileSync('supabase/migrations/'+path,'utf8'));
+for(const path of ['202611140001_raffle.sql','202611150001_discount_tiers.sql','202611150002_guest_checkout.sql','202611150003_payment_detection.sql'])await db.exec(readFileSync('supabase/migrations/'+path,'utf8'));
 const uid='11111111-1111-4111-8111-111111111111';await db.query('insert into auth.users values($1,$2,clock_timestamp())',[uid,'buyer@example.com']);
 const token='0x'+'b'.repeat(40),recipient='0x'+'c'.repeat(40),txid='0x'+'a'.repeat(64),blockHash='0x'+'d'.repeat(64);
 await db.query("insert into raffle_settings values(true,56,$1,$2,'USDT',18,clock_timestamp()+interval '1 day',true)",[token,recipient]);await db.exec("insert into raffle_test_access values('test@example.com',true)");
@@ -42,3 +42,4 @@ console.log('PASS guest API+PostgreSQL: no OTP before payment; pricing; private 
 
 
 },20000);
+

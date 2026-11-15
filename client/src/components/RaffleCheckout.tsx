@@ -1,8 +1,11 @@
 import { useEffect, useState } from "react";
 import { Link } from "wouter";
 import PaymentQr from "./PaymentQr";
+import WalletPayment from "./WalletPayment";
 
-type Order = { id: string; numbers: number[]; status: string; total_cents: number; symbol: string; recipient: string; chain_id: number; token_address: string; expires_at: string; txid: string | null; is_test?: boolean };
+type Order = { id: string; numbers: number[]; status: string; total_cents: number; symbol: string; recipient: string; chain_id: number; token_address: string; decimals: number; expires_at: string; txid: string | null; is_test?: boolean; wallet_txid?: string | null };
+function savedWalletTx(id: string) { try { const hash = localStorage.getItem(`matuto-payment-tx:${id}`); return hash && /^0x[0-9a-fA-F]{64}$/.test(hash) ? hash : null; } catch { return null; } }
+function hasWalletAttempt(id: string) { try { return localStorage.getItem(`matuto-payment-attempt:${id}`) === "1"; } catch { return false; } }
 const money = (c: number) => new Intl.NumberFormat("pt-BR", { style: "currency", currency: "USD" }).format(c / 100);
 const statuses: Record<string, string> = { reserved: "Aguardando transferência", expired: "Reserva vencida — não envie valores", review: "Recebimento detectado · em análise", paid: "Participação confirmada" };
 async function api(path: string, body?: object) {
@@ -13,6 +16,8 @@ async function api(path: string, body?: object) {
 }
 export default function RaffleCheckout({ numbers, tracking = false, testMode = false }: { numbers: number[]; tracking?: boolean; testMode?: boolean }) {
   const [configured, setConfigured] = useState(false), [sales, setSales] = useState(false), [testEnabled, setTestEnabled] = useState(false);
+  const [detectionEnabled, setDetectionEnabled] = useState(false), [methods, setMethods] = useState<Record<string, "wallet" | "external">>({});
+  const [detection, setDetection] = useState<Record<string,string>>({}), [walletPending, setWalletPending] = useState<Record<string,string>>({});
   const [email, setEmail] = useState(""), [name, setName] = useState(""), [phone, setPhone] = useState("+55"), [whatsapp, setWhatsapp] = useState(true);
   const [code, setCode] = useState(""), [sent, setSent] = useState(false), [recovery, setRecovery] = useState(tracking), [orders, setOrders] = useState<Order[]>([]);
   const [txids, setTxids] = useState<Record<string, string>>({}), [message, setMessage] = useState(""), [busy, setBusy] = useState(false), [restoring, setRestoring] = useState(true);
@@ -20,7 +25,7 @@ export default function RaffleCheckout({ numbers, tracking = false, testMode = f
     let mounted = true;
     void Promise.allSettled([api("/config"), api("/orders")]).then(([config, saved]) => {
       if (!mounted) return;
-      if (config.status === "fulfilled") { setConfigured(config.value.configured); setSales(config.value.salesEnabled); setTestEnabled(config.value.testEnabled); }
+      if (config.status === "fulfilled") { setConfigured(config.value.configured); setSales(config.value.salesEnabled); setTestEnabled(config.value.testEnabled); setDetectionEnabled(config.value.detectionEnabled); }
       if (saved.status === "fulfilled") { setOrders(saved.value.orders); if (saved.value.orders.length) setRecovery(false); }
       setRestoring(false);
     });
@@ -28,18 +33,36 @@ export default function RaffleCheckout({ numbers, tracking = false, testMode = f
   }, []);
   async function loadOrders() { const data = await api("/orders"); setOrders(data.orders); return data.orders as Order[]; }
   const hasPending = orders.some(order => order.status === "reserved" || order.status === "review");
+  function detectionText(data: { state: string; caughtUp?: boolean; message?: string }) {
+    if (data.state === "review") return "Recebimento localizado e verificado. A vinculação ao pedido está em análise.";
+    if (data.state === "needs_txid" || data.state === "ambiguous") return "Há depósito compatível na carteira. Informe seu txid para identificar sua transferência; um valor igual não identifica o comprador.";
+    if (data.state === "pending") return data.message || "Transação capturada. Aguardando confirmação na rede.";
+    if (data.state === "expired") return "Prazo vencido. Não envie valores. Se já pagou, informe o txid para conferência.";
+    return data.caughtUp === false ? "Consultando o histórico da rede…" : "Ainda não localizamos o recebimento. Se já enviou, aguarde a rede e não pague novamente.";
+  }
   useEffect(() => {
     if (!hasPending) return;
     let mounted = true;
     const refresh = () => {
       if (document.visibilityState !== "visible") return;
-      void api("/orders").then(data => { if (mounted) setOrders(data.orders); }).catch(() => {});
+      void api("/orders").then(async data => {
+        if (!mounted) return;
+        setOrders(data.orders);
+        const pending: Order[] = data.orders.filter((order: Order) => order.status === "reserved" && (detectionEnabled || order.wallet_txid)).slice(0,3);
+        await Promise.allSettled(pending.map(async order => {
+          try {
+            const result = await api(`/orders/${order.id}/detect`, {});
+            if (mounted) setDetection(previous=>({...previous,[order.id]:detectionText(result)}));
+            if (result.state === "review" && mounted) { const updated = await api("/orders"); if (mounted) setOrders(updated.orders); }
+          } catch { if (mounted) setDetection(previous=>({...previous,[order.id]:"Busca automática indisponível no momento. Você pode informar o txid; não reenvie o pagamento."})); }
+        }));
+      }).catch(() => {});
     };
     const timer = window.setInterval(refresh, 15000);
     window.addEventListener("focus", refresh);
     document.addEventListener("visibilitychange", refresh);
     return () => { mounted = false; window.clearInterval(timer); window.removeEventListener("focus", refresh); document.removeEventListener("visibilitychange", refresh); };
-  }, [hasPending]);
+  }, [hasPending,detectionEnabled]);
   async function run(fn: () => Promise<void>) {
     if (busy) return;
     setBusy(true); setMessage("");
@@ -84,25 +107,38 @@ export default function RaffleCheckout({ numbers, tracking = false, testMode = f
         </form>
         {!tracking && <button type="button" className="ledger-secondary" onClick={() => setRecovery(false)}>Voltar ao pagamento</button>}
       </div>}
-      {shownOrders.map(order => <article className="ledger-order" key={order.id}>
+      {shownOrders.map(order => {
+        const walletHash = order.wallet_txid || walletPending[order.id] || savedWalletTx(order.id);
+        const method = walletHash || hasWalletAttempt(order.id) ? "wallet" : methods[order.id] || "external";
+        return <article className="ledger-order" key={order.id}>
         <h2>{order.is_test && order.status === "paid" ? "Teste confirmado" : statuses[order.status] || "Em acompanhamento"}</h2>
         <p>Pedido <code>{order.id}</code></p>
         <p>{order.is_test ? "Número TESTE-0001 · não participa da rifa" : `Números: ${order.numbers.map(n => String(n).padStart(4,"0")).join(", ")}`}</p>
         <p>Total: <strong>{money(order.total_cents)} em {order.symbol}</strong></p>
         {order.status === "reserved" && <>
-          <PaymentQr recipient={order.recipient} symbol={order.symbol} chainId={order.chain_id} totalCents={order.total_cents} expiresAt={order.expires_at}/>
+          {!walletHash && !hasWalletAttempt(order.id) && <fieldset className="ledger-payment-methods"><legend>Como deseja pagar?</legend><label><input type="radio" name={`method-${order.id}`} checked={method==="wallet"} onChange={()=>setMethods(previous=>({...previous,[order.id]:"wallet"}))}/>Conectar carteira · txid automático</label><label><input type="radio" name={`method-${order.id}`} checked={method==="external"} onChange={()=>setMethods(previous=>({...previous,[order.id]:"external"}))}/>Pagar sem conectar · informar txid</label></fieldset>}
+          {method === "wallet" ? <WalletPayment order={order} capturedTxid={walletHash} api={api} onCaptured={async hash=>{
+            setWalletPending(previous=>({...previous,[order.id]:hash}));
+            await api(`/orders/${order.id}/wallet/transaction`,{txid:hash});
+            await loadOrders();
+            setDetection(previous=>({...previous,[order.id]:"Txid capturado automaticamente. Aguardando confirmação na rede; não pague novamente."}));
+          }}/> : <>
+            <p><strong>Você não precisa conectar sua carteira.</strong> Use o QR ou copie o endereço. Depois da transferência, você deve informar o txid (hash da transação) para localizarmos e conferirmos o pagamento. Não temos acesso à sua carteira, seed ou chave privada.</p>
+            <PaymentQr recipient={order.recipient} symbol={order.symbol} chainId={order.chain_id} totalCents={order.total_cents} expiresAt={order.expires_at}/>
+          </>}
           <p>Prazo do pagamento: {new Date(order.expires_at).toLocaleString("pt-BR")}. A taxa de saque é separada: o valor líquido recebido deve corresponder ao pedido. Confira o mínimo de saque da exchange antes de enviar.</p>
           <details><summary>Conferir contrato do USDT</summary><code>{order.token_address}</code></details>
         </>}
-        {order.txid ? <p>Txid: <code>{order.txid}</code></p> : <form onSubmit={event => { event.preventDefault(); void run(async () => { const data = await api(`/orders/${order.id}/transfer`,{txid:txids[order.id]}); await loadOrders();setMessage(data.message); }); }}>
+        {order.txid ? <p>Txid: <code>{order.txid}</code></p> : !walletHash && method === "external" ? <form onSubmit={event => { event.preventDefault(); void run(async () => { const data = await api(`/orders/${order.id}/transfer`,{txid:txids[order.id]}); await loadOrders();setMessage(data.message); }); }}>
           <label>Já transferi · informar txid<input required pattern="0x[0-9a-fA-F]{64}" maxLength={66} value={txids[order.id] || ""} onChange={event => setTxids(previous=>({...previous,[order.id]:event.target.value.trim()}))}/></label>
           <button className="ledger-secondary" disabled={busy}>Verificar recebimento</button>
-          <small>Depois do envio, cole o hash da transação da carteira ou exchange. Esta versão ainda precisa do txid para localizar a transferência.</small>
-        </form>}
+          <small>Obrigatório ao pagar sem conectar. Copie o hash da transação no histórico da carteira ou da exchange.</small>
+        </form> : null}
+        {!order.txid && (detectionEnabled || walletHash) && <><p role="status">{detection[order.id] || (walletHash ? "Transação enviada. A confirmação depende da rede; não pague novamente." : "A busca de depósitos funciona enquanto esta página está aberta e ao voltar para ela. Sem conexão, informe seu txid para vincular a transferência.")}</p><button type="button" className="ledger-secondary" disabled={busy} onClick={()=>void run(async()=>{const result=await api(`/orders/${order.id}/detect`,{});setDetection(previous=>({...previous,[order.id]:detectionText(result)}));await loadOrders();})}>Já enviei · conferir na rede</button></>}
         <p>O pedido fica salvo neste navegador. Ao voltar do app da carteira ou exchange, você pode continuar daqui. Para recuperar em outro dispositivo, confirme seu e-mail.</p>
         <p>{order.is_test ? "Teste de recebimento, sem compra de participação." : "A participação só está confirmada quando o status indicar “Participação confirmada”."} Recebimentos passam por análise de titularidade. Guarde o registro do saque.</p>
         <button type="button" className="ledger-secondary" disabled={busy} onClick={()=>void run(async()=>{await loadOrders();})}>Atualizar pagamento</button>
-      </article>)}
+      </article>; })}
       {(orders.length>0 || current) && <div className="ledger-order-actions"><Link href="/meus-pedidos">Ver todos os meus pedidos</Link><button type="button" className="ledger-secondary" disabled={busy} onClick={()=>void run(async()=>{await api("/auth/logout",{});setOrders([]);setRecovery(tracking);setSent(false);setCode("");})}>Sair deste dispositivo</button></div>}
       {tracking && !orders.length && !recovery && <p>Nenhum pedido encontrado para este e-mail.</p>}
     </>}

@@ -13,7 +13,7 @@ const TOTAL = 1200;
 const PAGE_SIZE = 100;
 const PRICE = 4;
 const numberLabel = (n: number) => String(n).padStart(4, "0");
-const usd = (n: number) => new Intl.NumberFormat("pt-BR", { style: "currency", currency: "USD", maximumFractionDigits: 2 }).format(n);
+const usd = (n: number) => n.toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2})+' USDT';
 
 export default function RifaLedger() {
   const [selected, setSelected] = useState<number[]>(()=>readSelection().slice(0,50));
@@ -118,7 +118,7 @@ export default function RifaLedger() {
               <div className="ledger-summary-label"><span>Seus números <b>({selected.length})</b></span><button disabled={!selected.length} onClick={() => { setSelected([]);setSelectionFeedback(""); }}>Limpar</button></div>
               <div className="ledger-chips">{selected.length ? [...selected].sort((a,b) => a-b).map(n => <button key={n} aria-label={`Remover número ${numberLabel(n)}`} onClick={() => toggle(n)}>{numberLabel(n)}<X size={12} /></button>) : <p>Seus números favoritos<br />aparecem aqui.</p>}</div>
               <div className="ledger-discount-offer"><strong>3 a 4 números: 10% OFF</strong><br/><strong>5 ou mais números: 15% OFF</strong><span className="ledger-package-note">Desconto automático no total do pedido. Não cumulativo.</span></div>
-              <div className="ledger-price-breakdown" aria-live="polite"><div><span>Subtotal · {selected.length} × US$ 4,00</span><span>{usd(subtotalCents / 100)}</span></div><div className={discountCents ? "ledger-discount-active" : ""}><span>Desconto {discountCents > 0 ? `(${discountRate}%)` : ""}</span><span>{discountCents > 0 ? `− ${usd(discountCents / 100)}` : usd(0)}</span></div></div>
+              <div className="ledger-price-breakdown" aria-live="polite"><div><span>Subtotal · {selected.length} × 4 USDT</span><span>{usd(subtotalCents / 100)}</span></div><div className={discountCents ? "ledger-discount-active" : ""}><span>Desconto {discountCents > 0 ? `(${discountRate}%)` : ""}</span><span>{discountCents > 0 ? `− ${usd(discountCents / 100)}` : usd(0)}</span></div></div>
               <div className="ledger-total-row"><span>Total</span><strong aria-live="polite">{usd(total)}</strong></div>
               <button className="ledger-primary" disabled={!inventoryReady||!selected.length} onClick={continueCheckout}>{sales?'Continuar para pagamento':'Conferir seleção'}<ArrowRight size={18} /></button>
               <div className="ledger-checkout-note"><ShieldCheck size={17} /><span>{sales?'Sem senha. Comprovante por e-mail com seus números.':'Vendas fechadas. Você pode conferir a seleção; nenhum pagamento será gerado.'}</span></div>

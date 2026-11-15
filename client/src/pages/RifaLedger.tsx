@@ -75,7 +75,7 @@ export default function RifaLedger() {
             <p>Ledger Nano Gen5 nova e lacrada.<br />Escolha seus números e acompanhe essa ação da comunidade Investidor Matuto.</p>
             <div className="ledger-retail-price"><span>Preço de referência no varejo</span><s>R$ 2.099,00</s><a href="https://kriptobr.com/" target="_blank" rel="noopener noreferrer">KriptoBR · Pix/boleto · consultado em 14/11/2026</a><small>Referência do aparelho; US$ 4 é o valor de um número, não a compra da Ledger.</small></div>
             <a className="ledger-primary ledger-hero-cta" href="#numeros">Escolher meus números <ArrowDown size={18} /></a>
-            <div className="ledger-package-ctas" aria-label="Pacotes com desconto"><button onClick={() => choosePackage(3)}><span>3 números · 10% OFF</span><strong>US$ 10,80</strong><small>Selecionar pacote de 3 <ArrowRight size={14}/></small></button><button className="ledger-best-package" onClick={() => choosePackage(5)}><span>5 números · 15% OFF</span><strong>US$ 17,00</strong><small>Selecionar pacote de 5 <ArrowRight size={14}/></small></button></div>
+            <div className="ledger-package-ctas" aria-label="Escolha sua quantidade"><button onClick={() => choosePackage(1)}><span>1 número</span><strong>US$ 4,00</strong><small>Selecionar 1 número <ArrowRight size={14}/></small></button><button onClick={() => choosePackage(3)}><span>3 números · 10% OFF</span><strong>US$ 10,80</strong><small>Selecionar pacote de 3 <ArrowRight size={14}/></small></button><button className="ledger-best-package" onClick={() => choosePackage(5)}><span>5 números · 15% OFF</span><strong>US$ 17,00</strong><small>Selecionar pacote de 5 <ArrowRight size={14}/></small></button></div>
             <div className="ledger-hero-facts"><span><PackageCheck size={17} /> Nova e lacrada</span><span><Truck size={17} /> Frete por minha conta</span></div>
           </div>
           <div className="ledger-portrait">
@@ -122,6 +122,7 @@ export default function RifaLedger() {
     </div>
   );
 }
+
 
 
 

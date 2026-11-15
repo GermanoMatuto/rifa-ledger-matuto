@@ -33,7 +33,7 @@ async function api(path: string, body?: object) {
   if (!r.ok) throw new Error(data.error || "Não foi possível concluir.");
   return data;
 }
-export default function RaffleCheckout({ numbers }: { numbers: number[] }) {
+export default function RaffleCheckout({ numbers, tracking = false }: { numbers: number[]; tracking?: boolean }) {
   const [configured, setConfigured] = useState(false),
     [sales, setSales] = useState(false),
     [email, setEmail] = useState(""),
@@ -88,7 +88,7 @@ export default function RaffleCheckout({ numbers }: { numbers: number[] }) {
             Cadastro e recebimento ainda não configurados. Não envie valores.
             Sua seleção continua sendo uma simulação.
           </p>
-          <fieldset disabled className="ledger-contact-preview">
+          {!tracking && <fieldset disabled className="ledger-contact-preview">
             <legend>Prévia do cadastro</legend>
             <label>
               Nome completo
@@ -119,7 +119,7 @@ export default function RaffleCheckout({ numbers }: { numbers: number[] }) {
               você ganhar. Endereço de envio será solicitado somente ao
               vencedor.
             </p>
-          </fieldset>
+          </fieldset>}
         </>
       ) : (
         <>
@@ -390,4 +390,5 @@ export default function RaffleCheckout({ numbers }: { numbers: number[] }) {
     </section>
   );
 }
+
 

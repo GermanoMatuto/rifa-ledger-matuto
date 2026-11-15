@@ -1,8 +1,11 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { Link, useLocation } from "wouter";
+import { readSelection, saveSelection } from "@/lib/raffle-selection";
+import { DRAW_DATE, DRAW_RULE, DRAW_TIME_NOTE } from "@/lib/raffle-schedule";
 
-import { ArrowDown, ArrowLeft, ArrowRight, Check, ChevronLeft, ChevronRight, Gift, PackageCheck, Search, ShieldCheck, Truck, X } from "lucide-react";
+import { ArrowDown, ArrowLeft, ArrowRight, ChevronLeft, ChevronRight, Gift, PackageCheck, Search, ShieldCheck, Truck, X } from "lucide-react";
 import "./rifa-ledger.css";
-import RaffleCheckout from "@/components/RaffleCheckout";
+
 
 const TOTAL = 1200;
 const PAGE_SIZE = 100;
@@ -11,11 +14,12 @@ const numberLabel = (n: number) => String(n).padStart(4, "0");
 const usd = (n: number) => new Intl.NumberFormat("pt-BR", { style: "currency", currency: "USD", maximumFractionDigits: 2 }).format(n);
 
 export default function RifaLedger() {
-  const [selected, setSelected] = useState<number[]>([]);
+  const [selected, setSelected] = useState<number[]>(readSelection);
   const [page, setPage] = useState(0);
   const [search, setSearch] = useState("");
   const [selectedOnly, setSelectedOnly] = useState(false);
-  const [review, setReview] = useState(false);
+  const [, navigate] = useLocation();
+  useEffect(() => { saveSelection(selected); }, [selected]);
   const subtotalCents = selected.length * PRICE * 100;
   const discountCents = selected.length >= 4 ? Math.round(subtotalCents * 0.1) : 0;
   const total = (subtotalCents - discountCents) / 100;
@@ -27,7 +31,7 @@ export default function RifaLedger() {
 
   function toggle(n: number) {
     setSelected(current => current.includes(n) ? current.filter(value => value !== n) : [...current, n]);
-    setReview(false);
+
   }
 
   function surprise() {
@@ -40,14 +44,14 @@ export default function RifaLedger() {
     setSelected(current => [...current, ...chosen]);
     if (chosen.length) setPage(Math.floor((chosen[0] - 1) / PAGE_SIZE));
     setSearch("");
-    setReview(false);
+
   }
 
   return (
     <div className="ledger-page">
       <header className="ledger-header">
         <a href="https://investidormatuto.com" className="ledger-brand">INVESTIDOR <span>MATUTO</span><small>CRIPTO • CONHECIMENTO • LIBERDADE</small></a>
-        <nav aria-label="Navegação da página"><a href="#numeros">Escolher números</a><a href="#regras">Como funciona</a><a href="https://investidormatuto.com" className="ledger-back"><ArrowLeft size={15} /> Voltar ao site</a></nav>
+        <nav aria-label="Navegação da página"><Link href="/meus-pedidos">Meus pedidos</Link><a href="#numeros">Escolher números</a><a href="#regras">Como funciona</a><a href="https://investidormatuto.com" className="ledger-back"><ArrowLeft size={15} /> Voltar ao site</a></nav>
       </header>
       <main>
         <section className="ledger-hero" aria-labelledby="ledger-title">
@@ -67,8 +71,9 @@ export default function RifaLedger() {
           <div className="ledger-prize-tag"><Gift size={20} /><span>O PRÊMIO<strong>Ledger Nano Gen5</strong></span></div>
         </section>
 
-        <div className="ledger-metrics"><div><small>POR NÚMERO</small><strong>US$ 4<span>,00</span></strong></div><div><small>NÚMEROS NO TOTAL</small><strong>1.200</strong></div><div><small>SORTEIO</small><strong className="ledger-metric-text">Data a definir</strong></div><div><small>ENTREGA DO PRÊMIO</small><strong className="ledger-metric-text">Frete incluso</strong></div></div>
+        <div className="ledger-metrics"><div><small>POR NÚMERO</small><strong>US$ 4<span>,00</span></strong></div><div><small>NÚMEROS NO TOTAL</small><strong>1.200</strong></div><div><small>SORTEIO</small><strong className="ledger-metric-text">{DRAW_DATE}</strong></div><div><small>ENTREGA DO PRÊMIO</small><strong className="ledger-metric-text">Frete incluso</strong></div></div>
 
+        <p className="ledger-schedule-note">{DRAW_RULE} <span>{DRAW_TIME_NOTE}</span></p>
         <section className="ledger-selection" id="numeros" aria-labelledby="numbers-title">
           <div className="ledger-section-title"><div><span className="ledger-eyebrow">01 / ESCOLHA SEUS NÚMEROS</span><h2 id="numbers-title">Qual vai ser o seu?</h2><p>Escolha um favorito ou deixe a seleção por nossa conta.</p></div><span className="ledger-preview-badge">Prévia interativa · vendas fechadas</span></div>
           <div className="ledger-shopping-layout">
@@ -83,24 +88,25 @@ export default function RifaLedger() {
             <aside className="ledger-summary" aria-label="Resumo da seleção">
               <span className="ledger-eyebrow">SUA ESCOLHA</span><h3>Um passo mais perto.</h3>
               <div className="ledger-summary-prize"><Gift size={25} /><div><strong>Ledger Nano Gen5</strong><small>Nova, lacrada e com frete incluso</small></div></div>
-              <div className="ledger-summary-label"><span>Seus números <b>({selected.length})</b></span><button disabled={!selected.length} onClick={() => { setSelected([]); setReview(false); }}>Limpar</button></div>
+              <div className="ledger-summary-label"><span>Seus números <b>({selected.length})</b></span><button disabled={!selected.length} onClick={() => { setSelected([]);  }}>Limpar</button></div>
               <div className="ledger-chips">{selected.length ? [...selected].sort((a,b) => a-b).map(n => <button key={n} aria-label={`Remover número ${numberLabel(n)}`} onClick={() => toggle(n)}>{numberLabel(n)}<X size={12} /></button>) : <p>Seus números favoritos<br />aparecem aqui.</p>}</div>
               <div className="ledger-discount-offer">Compre 4 ou mais números e ganhe <strong>10% de desconto.</strong></div>
               <div className="ledger-price-breakdown" aria-live="polite"><div><span>Subtotal · {selected.length} × US$ 4,00</span><span>{usd(subtotalCents / 100)}</span></div><div className={discountCents ? "ledger-discount-active" : ""}><span>Desconto {discountCents > 0 ? "(10%)" : ""}</span><span>{discountCents > 0 ? `− ${usd(discountCents / 100)}` : usd(0)}</span></div></div>
               <div className="ledger-total-row"><span>Total</span><strong aria-live="polite">{usd(total)}</strong></div>
-              <button className="ledger-primary" disabled={!selected.length} onClick={() => setReview(true)}>Revisar seleção <ArrowRight size={18} /></button>
-              {review && <div className="ledger-review" role="status"><Check size={18} /><p><strong>Seleção revisada: {selected.length} número(s).</strong> Total simulado: {usd(total)}{discountCents > 0 ? ", com 10% de desconto" : ""}. O pagamento ainda não está disponível. Nenhuma reserva foi criada.</p></div>}
-              <div className="ledger-checkout-note"><ShieldCheck size={17} /><span>Cadastro e pagamento serão disponibilizados na abertura da ação.</span></div>
-              <RaffleCheckout numbers={selected} />
+              <button className="ledger-primary" disabled={!selected.length} onClick={() => { saveSelection(selected); navigate("/checkout"); }}>Continuar <ArrowRight size={18} /></button>
+              <div className="ledger-checkout-note"><ShieldCheck size={17} /><span>Cadastro e instruções de pagamento ficam na próxima etapa.</span></div>
+
             </aside>
           </div>
         </section>
 
-        <section className="ledger-how" id="regras" aria-labelledby="how-title"><span className="ledger-eyebrow">02 / SEM COMPLICAÇÃO</span><h2 id="how-title">Da escolha à entrega.</h2><div className="ledger-steps">{[{n:"01",title:"Escolha seus números",text:"Serão 1.200 números, de 0001 a 1200, a US$ 4 cada."},{n:"02",title:"Confirme sua participação",text:"Na abertura, o cadastro e o pagamento confirmarão sua participação. Esta prévia não recebe valores."},{n:"03",title:"Acompanhe o resultado",text:"O sorteio terá data fixa e acontecerá entre os números pagos, independentemente da quantidade vendida."}].map(step => <article key={step.n}><span>{step.n}</span><h3>{step.title}</h3><p>{step.text}</p></article>)}</div></section>
-        <section className="ledger-faq" aria-labelledby="faq-title"><div><span className="ledger-eyebrow">ANTES DE PARTICIPAR</span><h2 id="faq-title">Tudo às claras.</h2><p>Os detalhes finais estarão disponíveis antes da abertura das vendas.</p></div><div>{[{q:"O prêmio é novo?",a:"Sim. O prêmio informado é uma Ledger Nano Gen5 nova e lacrada. A imagem de apresentação é ilustrativa; uma foto da caixa do prêmio será adicionada antes da abertura."},{q:"O sorteio depende de vender todos os números?",a:"Não. A proposta é realizar o sorteio na data marcada entre os números com pagamento confirmado, mesmo sem esgotar os 1.200. Sem participantes pagos, não haverá sorteio."},{q:"Quem paga o frete?",a:"O organizador assume o frete. A região de entrega e as condições para eventuais tributos serão definidas no regulamento antes das vendas."},{q:"Quando será e como posso pagar?",a:"A data, o meio de pagamento e o método de apuração ainda estão em definição. Esta página é uma prévia: não recebe pagamentos, não cria cadastro e não reserva números."},{q:"Preciso informar meu endereço agora?",a:"Não. A proposta é solicitar os dados de envio somente ao vencedor, por um canal privado. Nenhum endereço deve aparecer publicamente."}].map(item => <details key={item.q}><summary>{item.q}</summary><p>{item.a}</p></details>)}</div></section>
+        <section className="ledger-how" id="regras" aria-labelledby="how-title"><span className="ledger-eyebrow">02 / SEM COMPLICAÇÃO</span><h2 id="how-title">Da escolha à entrega.</h2><div className="ledger-steps">{[{n:"01",title:"Escolha seus números",text:"Serão 1.200 números, de 0001 a 1200, a US$ 4 cada."},{n:"02",title:"Confirme sua participação",text:"Na abertura, o cadastro e o pagamento confirmarão sua participação. Esta prévia não recebe valores."},{n:"03",title:"Acompanhe o resultado",text:DRAW_RULE}].map(step => <article key={step.n}><span>{step.n}</span><h3>{step.title}</h3><p>{step.text}</p></article>)}</div></section>
+        <section className="ledger-faq" aria-labelledby="faq-title"><div><span className="ledger-eyebrow">ANTES DE PARTICIPAR</span><h2 id="faq-title">Tudo às claras.</h2><p>Os detalhes finais estarão disponíveis antes da abertura das vendas.</p></div><div>{[{q:"O prêmio é novo?",a:"Sim. O prêmio informado é uma Ledger Nano Gen5 nova e lacrada. A imagem de apresentação é ilustrativa; uma foto da caixa do prêmio será adicionada antes da abertura."},{q:"O sorteio depende de vender todos os números?",a:"Não. O sorteio será realizado até 20/12/2026 entre os números com pagamento confirmado, mesmo sem esgotar os 1.200. Sem participantes pagos, não haverá sorteio."},{q:"Quem paga o frete?",a:"O organizador assume o frete. A região de entrega e as condições para eventuais tributos serão definidas no regulamento antes das vendas."},{q:"Quando será e como posso pagar?",a:DRAW_RULE + " " + DRAW_TIME_NOTE + " O pagamento será em USDT na BNB Smart Chain (BEP-20). O método de apuração ainda será divulgado. As vendas continuam fechadas nesta prévia."},{q:"Preciso informar meu endereço agora?",a:"Não. A proposta é solicitar os dados de envio somente ao vencedor, por um canal privado. Nenhum endereço deve aparecer publicamente."}].map(item => <details key={item.q}><summary>{item.q}</summary><p>{item.a}</p></details>)}</div></section>
       </main>
       <footer className="ledger-footer"><a href="https://investidormatuto.com">INVESTIDOR MATUTO</a><span>Prévia da página · nenhuma venda aberta</span><span>Ledger é marca de seu respectivo titular. Esta ação não é apresentada como oficial da Ledger.</span></footer>
     </div>
   );
 }
+
+
 

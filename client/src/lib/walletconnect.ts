@@ -8,7 +8,7 @@ export async function getWalletConnect() {
   // Load and contact the relay only after the visitor explicitly chooses WalletConnect.
   instance ??= import("@walletconnect/universal-provider").then(({ default: Provider }) => Provider.init({
     projectId: walletConnectProjectId, telemetryEnabled: false,
-    metadata: { name: "Investidor Matuto — Checkout", description: "Pagamento em USDT na BNB Smart Chain", url: "https://rifa-ledger-matuto.vercel.app", icons: [] },
+    metadata: { name: "Investidor Matuto — Checkout", description: "Pagamento em USDT na BNB Smart Chain", url: "https://rifa.investidormatuto.com", icons: [] },
   })).catch(error => { instance = undefined; throw error; });
   return instance;
 }

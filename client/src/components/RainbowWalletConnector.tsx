@@ -7,7 +7,7 @@ import { metaMaskWallet, trustWallet, rabbyWallet, walletConnectWallet } from "@
 import "@rainbow-me/rainbowkit/styles.css";
 import type { WalletProvider } from "@/lib/wallet-payment";
 const projectId = import.meta.env.VITE_WALLETCONNECT_PROJECT_ID;
-const connectors = connectorsForWallets([{groupName:"Carteiras",wallets:[metaMaskWallet,trustWallet,rabbyWallet,walletConnectWallet]}],{appName:"Investidor Matuto — Checkout",projectId,appUrl:"https://rifa-ledger-matuto.vercel.app"});
+const connectors = connectorsForWallets([{groupName:"Carteiras",wallets:[metaMaskWallet,trustWallet,rabbyWallet,walletConnectWallet]}],{appName:"Investidor Matuto — Checkout",projectId,appUrl:"https://rifa.investidormatuto.com"});
 const config = createConfig({chains:[bsc],connectors,transports:{[bsc.id]:http("https://bsc-dataseed.bnbchain.org")},storage:null});
 const queryClient = new QueryClient();
 type Props = { request: number; onReady: (provider: WalletProvider, address: string, disconnect: () => Promise<void>) => void; onLost: () => void; onError: (message: string) => void };

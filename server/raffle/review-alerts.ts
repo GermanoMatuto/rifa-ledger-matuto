@@ -29,3 +29,14 @@ export async function dispatchReviewAlerts(env:NodeJS.ProcessEnv,db:Database){
  }
  return {configured:true,sent,queued:alerts.length-sent};
 }
+// Runs inside the server so the Secret never needs to be revealed in the dashboard.
+export async function inspectTelegramBot(env:NodeJS.ProcessEnv){
+ const token=env.RAFFLE_TELEGRAM_BOT_TOKEN||'';
+ if(!/^\d+:[A-Za-z0-9_-]{20,}$/.test(token))return {configured:false,valid:false};
+ try{
+  const response=await fetch(`https://api.telegram.org/bot${token}/getMe`,{method:'POST',signal:AbortSignal.timeout(8000)});
+  const data=await response.json();
+  if(!response.ok||!data?.ok||data.result?.is_bot!==true)return {configured:true,valid:false,status:response.status};
+  return {configured:true,valid:true,username:String(data.result.username||''),expectedBot:String(data.result.username||'').toLowerCase()==='germano08_bot',chatConfigured:/^-?\d+$/.test(env.RAFFLE_TELEGRAM_CHAT_ID||'')};
+ }catch{return {configured:true,valid:false,temporarilyUnavailable:true};}
+}

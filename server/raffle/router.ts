@@ -6,7 +6,7 @@ import { makeRpc } from "./rpc.js";
 import { detectTransfers } from "./detection.js";
 import { verifyMessage } from "viem";
 import { dispatchReceipts } from "./receipts.js";
-import { dispatchReviewAlerts } from "./review-alerts.js";
+import { dispatchReviewAlerts, inspectTelegramBot } from "./review-alerts.js";
 
 type Order = {
   id: string;
@@ -303,6 +303,11 @@ export function createRaffleRouter(env: NodeJS.ProcessEnv = process.env) {
     await limit('navigation:'+clientIp(req),60,3600);
     await rpcDb('raffle_record_navigation',{p_event:event,p_device:device,p_phase:enabled?'sales':'preview'});
     res.json({ok:true});
+  }));
+  router.post("/internal/telegram/check",wrap(async(req,res)=>{
+    const expected=env.RAFFLE_WORKER_SECRET||"",supplied=req.get("authorization")?.replace(/^Bearer /,"")||"";
+    if(expected.length<32||supplied.length!==expected.length||!timingSafeEqual(Buffer.from(expected),Buffer.from(supplied)))throw new HttpError(401,"Acesso não autorizado.");
+    res.json(await inspectTelegramBot(env));
   }));
   router.post("/internal/receipts", wrap(async (req,res)=>{
     const expected=env.RAFFLE_WORKER_SECRET||"",supplied=req.get("authorization")?.replace(/^Bearer /,"")||"";

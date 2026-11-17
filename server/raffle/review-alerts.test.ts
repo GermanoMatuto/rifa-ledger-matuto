@@ -11,3 +11,7 @@ it('preserves pending alerts until configured and handles throttling without lea
  const fetch=vi.fn().mockResolvedValue(new Response(JSON.stringify({ok:false,parameters:{retry_after:120}}),{status:429}));vi.stubGlobal('fetch',fetch);
  try{expect((await dispatchReviewAlerts(env,db)).sent).toBe(0);expect(db).toHaveBeenCalledWith('raffle_review_alert_failed',{p_order:'order-1',p_attempt:1,p_error:'TELEGRAM_HTTP_429',p_delay:120});db.mockClear();fetch.mockRejectedValue(new Error('secret URL '+env.RAFFLE_TELEGRAM_BOT_TOKEN));await dispatchReviewAlerts(env,db);expect(db).toHaveBeenCalledWith('raffle_review_alert_failed',{p_order:'order-1',p_attempt:1,p_error:'TELEGRAM_TEMPORARILY_UNAVAILABLE',p_delay:0});expect(JSON.stringify(db.mock.calls)).not.toContain(env.RAFFLE_TELEGRAM_BOT_TOKEN);}finally{vi.unstubAllGlobals();}
 });
+it('validates bot identity server-side without returning its token or consuming updates',async()=>{
+ const {inspectTelegramBot}=await import('./review-alerts');const fetch=vi.fn().mockResolvedValue(new Response(JSON.stringify({ok:true,result:{is_bot:true,username:'Germano08_bot'}})));vi.stubGlobal('fetch',fetch);
+ try{const result=await inspectTelegramBot(env);expect(result).toEqual({configured:true,valid:true,username:'Germano08_bot',expectedBot:true,chatConfigured:true});expect(JSON.stringify(result)).not.toContain(env.RAFFLE_TELEGRAM_BOT_TOKEN);expect(fetch.mock.calls[0][0]).toMatch(/\/getMe$/);}finally{vi.unstubAllGlobals();}
+});

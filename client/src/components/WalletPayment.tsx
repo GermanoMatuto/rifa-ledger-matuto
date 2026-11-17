@@ -1,12 +1,12 @@
 import { Component, lazy, Suspense, useCallback, useRef, useState } from "react";
 import { Wallet as WalletIcon, ShieldCheck, CheckCircle2 } from "lucide-react";
+import { connectWallet, sendWalletPayment, signWalletLink, type WalletProvider, type PaymentRequest } from "@/lib/wallet-payment";
 class ConnectionBoundary extends Component<{children: import("react").ReactNode}, {failed:boolean}> {
   state={failed:false};
   static getDerivedStateFromError(){return {failed:true};}
   render(){return this.state.failed ? <p role="status">Não foi possível carregar as carteiras. Recarregue a página ou escolha transferir sem conectar.</p> : this.props.children;}
 }
 const RainbowWalletConnector = lazy(() => import("./RainbowWalletConnector"));
-import { sendWalletPayment, signWalletLink, type WalletProvider, type PaymentRequest } from "@/lib/wallet-payment";
 
 type Wallet = { id: string; name: string; provider: WalletProvider };
 type Props = { order: PaymentRequest; capturedTxid?: string | null; api: (path: string, body?: object) => Promise<any>; onCaptured: (txid: string) => Promise<void> };
@@ -48,6 +48,8 @@ export default function WalletPayment({ order, capturedTxid, api, onCaptured }: 
       <p>Serão duas confirmações: primeiro uma assinatura para vincular a carteira ao pedido, sem transferir fundos; depois a transferência exata de USDT.</p>
       <button type="button" className="ledger-primary" disabled={busy} onClick={()=>void act(async()=>{
         if (!wallet) return;
+        const currentAddress = await connectWallet(wallet.provider, Number(order.chain_id));
+        if (currentAddress.toLowerCase() !== address.toLowerCase()) throw new Error("A conta da carteira mudou. Confira a conta conectada e tente novamente.");
         const challenge = await api(`/orders/${order.id}/wallet/challenge`, { address });
         const signature = await signWalletLink(wallet.provider,address,challenge.message);
         await api(`/orders/${order.id}/wallet/verify`,{signature});

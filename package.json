@@ -1,36 +1,48 @@
 {
- "name": "rifa-ledger-matuto",
- "version": "0.1.0",
- "private": true,
- "type": "module",
- "engines": {
-  "node": "24.x"
- },
- "scripts": {
-  "dev": "vite --host 127.0.0.1",
-  "build": "tsc --noEmit && vite build",
-  "preview": "vite preview --host 127.0.0.1",
-  "test": "vitest run --config vitest.raffle.config.ts"
- },
- "dependencies": {
-  "@walletconnect/universal-provider": "^2.26.0",
-  "express": "4.22.3",
-  "lucide-react": "0.453.0",
-  "qrcode.react": "^4.2.0",
-  "react": "19.2.1",
-  "react-dom": "19.2.1",
-  "viem": "^2.57.19",
-  "wouter": "3.7.1"
- },
- "devDependencies": {
-  "@electric-sql/pglite": "^0.5.16",
-  "@types/express": "4.17.21",
-  "@types/node": "24.7.0",
-  "@types/react": "19.2.1",
-  "@types/react-dom": "19.2.1",
-  "@vitejs/plugin-react": "5.0.4",
-  "typescript": "5.6.3",
-  "vite": "7.3.8",
-  "vitest": "4.1.12"
- }
+  "name": "rifa-ledger-matuto",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": "24.x"
+  },
+  "scripts": {
+    "dev": "vite --host 127.0.0.1",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview --host 127.0.0.1",
+    "test": "vitest run --config vitest.raffle.config.ts",
+    "postinstall": "node scripts/patch-cuer.mjs"
+  },
+  "dependencies": {
+    "@rainbow-me/rainbowkit": "^2.2.11",
+    "@tanstack/react-query": "^5.107.1",
+    "@walletconnect/universal-provider": "^2.26.0",
+    "express": "4.22.3",
+    "lucide-react": "0.453.0",
+    "qrcode.react": "^4.2.0",
+    "react": "19.2.1",
+    "react-dom": "19.2.1",
+    "viem": "^2.57.19",
+    "wagmi": "^2.19.5",
+    "wouter": "3.7.1"
+  },
+  "devDependencies": {
+    "@electric-sql/pglite": "^0.5.16",
+    "@types/express": "4.17.21",
+    "@types/node": "24.7.0",
+    "@types/react": "19.2.1",
+    "@types/react-dom": "19.2.1",
+    "@vitejs/plugin-react": "5.0.4",
+    "typescript": "5.6.3",
+    "vite": "7.3.8",
+    "vitest": "4.1.12"
+  },
+  "overrides": {
+    "@walletconnect/ethereum-provider": "2.26.0",
+    "decode-uri-component": "^0.5.1",
+    "ws": "^8.21.0",
+    "cuer": {
+      "qr": "0.7.2"
+    }
+  }
 }

@@ -10,8 +10,8 @@ function savedWalletTx(id: string) { try { const hash = localStorage.getItem(`ma
 function hasWalletAttempt(id: string) { try { return localStorage.getItem(`matuto-payment-attempt:${id}`) === "1"; } catch { return false; } }
 const money = (c: number) => new Intl.NumberFormat("pt-BR", { style: "currency", currency: "USD" }).format(c / 100);
 const statuses: Record<string, string> = { reserved: "Aguardando transferência", expired: "Reserva vencida — não envie valores", review: "Recebimento detectado · em análise", paid: "Participação confirmada" };
-async function api(path: string, body?: object) {
-  const response = await fetch(`/api/raffle${path}`, { credentials: "same-origin", headers: { "Content-Type": "application/json" }, ...(body ? { method: "POST", body: JSON.stringify(body) } : {}) });
+async function api(path: string, body?: object, signal?: AbortSignal) {
+  const response = await fetch(`/api/raffle${path}`, { signal, credentials: "same-origin", headers: { "Content-Type": "application/json" }, ...(body ? { method: "POST", body: JSON.stringify(body) } : {}) });
   const data = await response.json().catch(() => ({ error: "Serviço ainda não disponível." }));
   if (!response.ok) throw new Error(data.error || "Não foi possível concluir.");
   return data;
@@ -25,16 +25,31 @@ export default function RaffleCheckout({ numbers, tracking = false, testMode = f
   const contactId=useId();
   const [code, setCode] = useState(""), [sent, setSent] = useState(false), [recovery, setRecovery] = useState(tracking), [orders, setOrders] = useState<Order[]>([]);
   const [txids, setTxids] = useState<Record<string, string>>({}), [message, setMessage] = useState(""), [busy, setBusy] = useState(false), [restoring, setRestoring] = useState(true);
+  const [initialLoadFailed, setInitialLoadFailed] = useState(false), [loadAttempt, setLoadAttempt] = useState(0);
   useEffect(() => {
     let mounted = true;
-    void Promise.allSettled([api("/config"), api("/orders")]).then(([config, saved]) => {
+    const controller = new AbortController();
+    const timeout = window.setTimeout(() => controller.abort(), 15000);
+    setRestoring(true);
+    setInitialLoadFailed(false);
+    const configRequest = api("/config", undefined, controller.signal).then(data => {
+      if (![data?.configured, data?.salesEnabled, data?.testEnabled, data?.detectionEnabled].every(value => typeof value === "boolean")) throw new Error("Configuração indisponível.");
+      return data;
+    });
+    const ordersRequest = api("/orders", undefined, controller.signal).then(data => {
+      if (!Array.isArray(data?.orders)) throw new Error("Pedidos indisponíveis.");
+      return data;
+    });
+    void Promise.allSettled([configRequest, ordersRequest]).then(([config, saved]) => {
       if (!mounted) return;
+      window.clearTimeout(timeout);
+      setInitialLoadFailed(config.status === "rejected");
       if (config.status === "fulfilled") { setConfigured(config.value.configured); setSales(config.value.salesEnabled); setTestEnabled(config.value.testEnabled); setDetectionEnabled(config.value.detectionEnabled); }
       if (saved.status === "fulfilled") { setOrders(saved.value.orders); if (saved.value.orders.length) setRecovery(false); }
       setRestoring(false);
     });
-    return () => { mounted = false; };
-  }, []);
+    return () => { mounted = false; window.clearTimeout(timeout); controller.abort(); };
+  }, [loadAttempt]);
   async function loadOrders() { const data = await api("/orders"); setOrders(data.orders); return data.orders as Order[]; }
   const hasPending = orders.some(order => order.status === "reserved" || order.status === "review");
   function detectionText(data: { state: string; caughtUp?: boolean; message?: string }) {
@@ -78,7 +93,12 @@ export default function RaffleCheckout({ numbers, tracking = false, testMode = f
   const canCreate = configured && (testMode ? testEnabled : sales) && (testMode || numbers.length > 0);
   return <section className="ledger-checkout" aria-label="Contato e pagamento" aria-busy={busy || restoring}>
     {!tracking && <ol className="ledger-checkout-steps" aria-label="Etapas da compra"><li aria-current={!current ? "step" : undefined}>1. Seus dados</li><li aria-current={current?.status === "reserved" ? "step" : undefined}>2. Pagamento</li><li aria-current={current && current.status !== "reserved" ? "step" : undefined}>3. Acompanhamento</li></ol>}
-    {restoring ? <p role="status">Conferindo seus pedidos neste navegador…</p> : <>
+    {restoring ? <p role="status">Conferindo seus pedidos neste navegador…</p> : initialLoadFailed ? <div className="ledger-checkout-closed" role="alert">
+      <h2>Não foi possível carregar o checkout.</h2>
+      <p>Houve uma falha de conexão ou o serviço está temporariamente indisponível. Tente novamente em instantes.</p>
+      <p>Sua seleção continua salva. Se já enviou o pagamento, não pague novamente.</p>
+      <button type="button" className="ledger-primary" onClick={() => { setRestoring(true); setLoadAttempt(attempt => attempt + 1); }}>Tentar novamente</button>
+    </div> : <>
       {!tracking&&!testMode&&!current&&!recovery&&!sales&&<div className="ledger-checkout-closed" role="status"><h2>As vendas ainda não abriram.</h2><p>Sua seleção está salva neste navegador. Não é uma reserva e nenhum pagamento será gerado agora.</p><p>Você não precisa preencher seus dados enquanto as vendas estiverem fechadas.</p><Link href="/" className="ledger-secondary">Voltar aos números</Link><button type="button" className="ledger-text-button" onClick={()=>setRecovery(true)}>Já fiz um pedido · recuperar</button></div>}
       {!tracking && !current && !recovery && (testMode||sales) && <>
         <h2>Seus dados para acompanhar o pedido</h2>

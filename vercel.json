@@ -52,6 +52,17 @@
   ],
   "redirects": [
     {
+      "source": "/",
+      "has": [
+        {
+          "type": "host",
+          "value": "rifa-ledger-matuto.vercel.app"
+        }
+      ],
+      "destination": "https://rifa.investidormatuto.com/",
+      "permanent": true
+    },
+    {
       "source": "/:path*",
       "has": [
         {

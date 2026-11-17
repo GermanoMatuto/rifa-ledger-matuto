@@ -90,6 +90,8 @@ export function createRaffleRouter(env: NodeJS.ProcessEnv = process.env) {
         );
       if (data?.message?.includes("SALES_CLOSED"))
         throw new HttpError(409, "As vendas estão fechadas.");
+      if (data?.message?.includes("MANUAL_REFUND_REQUIRED")) throw new HttpError(409,"O prazo de análise venceu ou os números não estão mais disponíveis. Não é possível aprovar este pedido.");
+      if (data?.message?.includes("NOT_IN_REVIEW")) throw new HttpError(409,"O pedido já saiu de análise. Atualize o painel.");
       if (data?.code === "23505")
         throw new HttpError(
           409,
@@ -296,6 +298,28 @@ export function createRaffleRouter(env: NodeJS.ProcessEnv = process.env) {
     await rpcDb("raffle_expire", {});
     const [result,funnel] = await Promise.all([rpcDb("raffle_admin_payments", { p_search: search, p_status: status, p_include_tests: req.query.tests !== "false", p_offset: (page-1)*50 }),rpcDb('raffle_navigation_summary',{})]);
     res.json({ ...result, funnel, page, pageSize: 50, updatedAt: new Date().toISOString() });
+  }));
+  router.post("/admin/payments/:id/approve",wrap(async(req,res)=>{
+    const account=await user(req);
+    const admins=(env.RAFFLE_ADMIN_EMAILS||"").split(",").map(email=>email.trim().toLowerCase()).filter(Boolean);
+    if(!account.email||!admins.includes(String(account.email).toLowerCase()))throw new HttpError(403,"Este e-mail não tem acesso ao painel administrativo.");
+    await limit("admin-approve:"+account.id,10,60);
+    if(!UUID.test(String(req.params.id)))throw new HttpError(400,"Pedido inválido.");
+    const evidence=String(req.body.evidence||"").trim(),expectedHash=String(req.body.txid||"").toLowerCase();
+    if(req.body.ownershipConfirmed!==true||evidence.length<20||evidence.length>2000||!TXID.test(expectedHash))throw new HttpError(400,"Confira a origem do pagamento e descreva a comprovação de titularidade (20 a 2.000 caracteres).");
+    const rows:Order[]=await request(`/rest/v1/raffle_orders?id=eq.${req.params.id}&select=*`);
+    const order=rows[0];
+    if(!order)throw new HttpError(404,"Pedido não encontrado.");
+    if(order.txid!==expectedHash)throw new HttpError(409,"A transação do pedido mudou. Atualize o painel antes de aprovar.");
+    if(order.status==="paid"){res.json({paid:true,alreadyConfirmed:true});return;}
+    if(order.status!=="review")throw new HttpError(409,"Este pedido não está em análise.");
+    if(!env.RAFFLE_EVM_RPC_URL)throw new HttpError(503,"Verificação da rede indisponível. Nenhuma aprovação foi feita.");
+    let transfer;
+    try{transfer=await verifyTransfer(makeRpc(env.RAFFLE_EVM_RPC_URL),expectedHash,configFor(order),unitsFor(order),order.created_at);}
+    catch(error){throw new HttpError(422,error instanceof Error?error.message:"Não foi possível validar a transferência.");}
+    await rpcDb("raffle_approve",{p_order:order.id,p_operator:String(account.email).toLowerCase(),p_evidence:JSON.stringify({method:"organizer-review",note:evidence,txid:transfer.txid,block:transfer.blockHash,log:transfer.logIndex,receivedAt:transfer.paidAt})});
+    await dispatchReceipts(env,rpcDb,order.id).catch(()=>{});
+    res.json({paid:true,message:"Pagamento aprovado. O comprovante será enviado por e-mail."});
   }));
   router.post('/events',wrap(async(req,res)=>{
     const event=String(req.body.event||''),device=String(req.body.device||'');

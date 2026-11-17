@@ -15,3 +15,7 @@ it('validates bot identity server-side without returning its token or consuming 
  const {inspectTelegramBot}=await import('./review-alerts');const fetch=vi.fn().mockResolvedValue(new Response(JSON.stringify({ok:true,result:{is_bot:true,username:'Germano08_bot'}})));vi.stubGlobal('fetch',fetch);
  try{const result=await inspectTelegramBot(env);expect(result).toEqual({configured:true,valid:true,username:'Germano08_bot',expectedBot:true,chatConfigured:true});expect(JSON.stringify(result)).not.toContain(env.RAFFLE_TELEGRAM_BOT_TOKEN);expect(fetch.mock.calls[0][0]).toMatch(/\/getMe$/);}finally{vi.unstubAllGlobals();}
 });
+it('tests delivery only to the configured private chat after verifying bot and recipient',async()=>{
+ const {sendTelegramTest}=await import('./review-alerts');const fetch=vi.fn().mockResolvedValueOnce(new Response(JSON.stringify({ok:true,result:{is_bot:true,username:'Germano08_bot'}}))).mockResolvedValueOnce(new Response(JSON.stringify({ok:true,result:{id:12345,type:'private'}}))).mockResolvedValueOnce(new Response(JSON.stringify({ok:true,result:{message_id:43}})));vi.stubGlobal('fetch',fetch);
+ try{expect((await sendTelegramTest(env)).sent).toBe(true);expect(fetch.mock.calls.map(c=>String(c[0]).split('/').pop())).toEqual(['getMe','getChat','sendMessage']);expect(JSON.parse(fetch.mock.calls[2][1].body).text).toContain('mensagem de teste');}finally{vi.unstubAllGlobals();}
+});

@@ -40,3 +40,17 @@ export async function inspectTelegramBot(env:NodeJS.ProcessEnv){
   return {configured:true,valid:true,username:String(data.result.username||''),expectedBot:String(data.result.username||'').toLowerCase()==='germano08_bot',chatConfigured:/^-?\d+$/.test(env.RAFFLE_TELEGRAM_CHAT_ID||'')};
  }catch{return {configured:true,valid:false,temporarilyUnavailable:true};}
 }
+export async function sendTelegramTest(env:NodeJS.ProcessEnv){
+ const identity=await inspectTelegramBot(env);
+ if(!identity.valid||!identity.expectedBot)return {sent:false,reason:'BOT_IDENTITY_NOT_VERIFIED'};
+ const chat=env.RAFFLE_TELEGRAM_CHAT_ID||'',token=env.RAFFLE_TELEGRAM_BOT_TOKEN||'';
+ if(!/^\d+$/.test(chat))return {sent:false,reason:'PRIVATE_CHAT_NOT_CONFIGURED'};
+ try{
+  const infoResponse=await fetch(`https://api.telegram.org/bot${token}/getChat`,{method:'POST',signal:AbortSignal.timeout(8000),headers:{'Content-Type':'application/json'},body:JSON.stringify({chat_id:chat})});
+  const info=await infoResponse.json();
+  if(!infoResponse.ok||!info.ok||info.result?.type!=='private'||String(info.result.id)!==chat)return {sent:false,reason:'START_PRIVATE_CHAT_WITH_BOT'};
+  const response=await fetch(`https://api.telegram.org/bot${token}/sendMessage`,{method:'POST',signal:AbortSignal.timeout(8000),headers:{'Content-Type':'application/json'},body:JSON.stringify({chat_id:chat,text:'✅ Avisos da rifa conectados.\n\nQuando um pedido real entrar em análise, você receberá aqui o valor, os números, o txid e o link do painel.\n\nEsta é uma mensagem de teste. Nenhum pagamento foi feito ou aprovado.',protect_content:true,reply_markup:{inline_keyboard:[[{text:'Abrir painel',url:new URL('/admin/pagamentos',env.RAFFLE_SITE_ORIGIN!).href}]]}})});
+  const data=await response.json();
+  return response.ok&&data.ok&&Number.isSafeInteger(data.result?.message_id)?{sent:true,messageId:data.result.message_id,username:identity.username}:{sent:false,reason:'TELEGRAM_REJECTED_TEST'};
+ }catch{return {sent:false,reason:'TEST_DELIVERY_UNCERTAIN_DO_NOT_RETRY_AUTOMATICALLY'};}
+}

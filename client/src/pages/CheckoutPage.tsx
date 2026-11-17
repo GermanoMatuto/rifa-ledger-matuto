@@ -30,9 +30,9 @@ export default function CheckoutPage({ tracking = false }: { tracking?: boolean 
           <div className="ledger-checkout-numbers">{testMode ? <span>TESTE-0001</span> : numbers.map(n=><span key={n}>{String(n).padStart(4,'0')}</span>)}</div>
           {!testMode && <Link className="ledger-edit-selection" href="/">Alterar números</Link>}
           <div className="ledger-price-breakdown"><div><span>Subtotal</span><span>{formatUSDT(subtotal)}</span></div>{!testMode && <div className={discount ? 'ledger-discount-active' : ''}><span>Desconto {discount ? `(${rate}%)` : ''}</span><span>{discount ? '− ' : ''}{formatUSDT(discount)}</span></div>}</div>
-          {!testMode && <><p className="ledger-local-note">{DRAW_RULE}</p><p className="ledger-local-note">{DRAW_TIME_NOTE} Vendas públicas ainda fechadas.</p></>}
+          {!testMode && <><p className="ledger-local-note">{DRAW_RULE}</p><p className="ledger-local-note">{DRAW_TIME_NOTE}</p></>}
           </details>
-          <div className="ledger-checkout-note"><ShieldCheck size={18} aria-hidden="true"/><span>{testMode ? 'Teste com moeda real. Não participa da rifa.' : 'Nova e lacrada. Frete por conta do organizador.'}</span></div>
+          <div className="ledger-checkout-note"><ShieldCheck size={18} aria-hidden="true"/><span>{testMode ? 'Teste com moeda real. Não participa da rifa.' : 'Nova e lacrada. Frete para Brasil e exterior por conta do organizador.'}</span></div>
         </aside>}
         <div className="ledger-number-panel ledger-checkout-form"><RaffleCheckout numbers={numbers} tracking={tracking} testMode={testMode}/></div>
       </div>}

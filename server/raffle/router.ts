@@ -6,6 +6,7 @@ import { makeRpc } from "./rpc.js";
 import { detectTransfers } from "./detection.js";
 import { verifyMessage } from "viem";
 import { dispatchReceipts } from "./receipts.js";
+import { dispatchReviewAlerts } from "./review-alerts.js";
 
 type Order = {
   id: string;
@@ -312,7 +313,8 @@ export function createRaffleRouter(env: NodeJS.ProcessEnv = process.env) {
       if(order.user_id)await reconcileWallet(order,{userId:order.user_id,filter:""});
       else if(order.guest_session_hash)await reconcileWallet(order,{hash:order.guest_session_hash,filter:""});
     }));
-    res.json(await dispatchReceipts(env,rpcDb));
+    const [receipts,reviewAlerts]=await Promise.all([dispatchReceipts(env,rpcDb),dispatchReviewAlerts(env,rpcDb)]);
+    res.json({...receipts,reviewAlerts});
   }));
   router.get(
     "/inventory",

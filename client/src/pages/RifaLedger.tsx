@@ -35,6 +35,7 @@ export default function RifaLedger() {
   const discountRate = discountPercent(selected.length);
   const discountCents = Math.round(subtotalCents * discountRate / 100);
   const total = (subtotalCents - discountCents) / 100;
+  const buyLabel = `Comprar ${selected.length} ${selected.length === 1 ? "número" : "números"} · ${usd(total)}`;
   const visible = useMemo(() => {
     const numbers = selectedOnly ? [...selected].sort((a, b) => a - b) : Array.from({ length: TOTAL }, (_, i) => i + 1);
     if (search) return numbers.filter(n => numberLabel(n).includes(search));
@@ -120,7 +121,7 @@ export default function RifaLedger() {
               <div className="ledger-discount-offer"><strong>3 a 4 números: 10% OFF</strong><br/><strong>5 ou mais números: 15% OFF</strong><span className="ledger-package-note">Desconto automático no total do pedido. Não cumulativo.</span></div>
               <div className="ledger-price-breakdown" aria-live="polite"><div><span>Subtotal · {selected.length} × 4 USDT</span><span>{usd(subtotalCents / 100)}</span></div><div className={discountCents ? "ledger-discount-active" : ""}><span>Desconto {discountCents > 0 ? `(${discountRate}%)` : ""}</span><span>{discountCents > 0 ? `− ${usd(discountCents / 100)}` : usd(0)}</span></div></div>
               <div className="ledger-total-row"><span>Total</span><strong aria-live="polite">{usd(total)}</strong></div>
-              <button className="ledger-primary" disabled={!inventoryReady||!selected.length} onClick={continueCheckout}>{sales?'Continuar para pagamento':'Conferir seleção'}<ArrowRight size={18} /></button>
+              <button className="ledger-primary" disabled={!sales||!inventoryReady||!selected.length} onClick={continueCheckout}>{sales?(selected.length?buyLabel:"Selecione seus números"):"Vendas em breve"}<ArrowRight size={18} /></button>
               <div className="ledger-checkout-note"><ShieldCheck size={17} /><span>{sales?'Sem senha. Comprovante por e-mail com seus números.':'Vendas fechadas. Você pode conferir a seleção; nenhum pagamento será gerado.'}</span></div>
               <details className="ledger-fee-details"><summary>Pagamento e taxas</summary><p>USDT na BNB Smart Chain (BEP-20). Carteiras próprias precisam de BNB para a taxa de rede. Exchanges podem cobrar taxa e exigir saque mínimo. O pedido deve receber o valor líquido exato.</p></details>
 
@@ -133,13 +134,7 @@ export default function RifaLedger() {
         <section className="ledger-faq" aria-labelledby="faq-title"><div><span className="ledger-eyebrow">ANTES DE PARTICIPAR</span><h2 id="faq-title">Tudo às claras.</h2><p>Preço, pagamento e sorteio em um só lugar.</p></div><div>{[{q:'Quanto custa e quais os descontos?',a:'Um número custa 4 USDT. De 3 a 4 números, o desconto é de 10%; a partir de 5, de 15%. Três números custam 10,80 USDT e cinco custam 17 USDT. Descontos não são cumulativos.'},{q:'O prêmio é novo?',a:'O prêmio informado é uma Ledger Nano Gen5 nova e lacrada. A foto real da embalagem está nesta página. A imagem de apresentação com o organizador é ilustrativa.'},{q:'O sorteio depende de vender todos os números?',a:'Não. A apuração começa na extração inicial divulgada, mesmo sem esgotar os 1.200 números. Se nenhum final dos cinco prêmios corresponder a um participante, a apuração continua na próxima extração, com a mesma lista. O vencedor pode ser identificado depois de 20/12. Sem números pagos, não haverá contemplado.'},{q:'Quem paga o frete?',a:'O organizador assume o frete. A região de entrega e o tratamento de eventuais tributos serão divulgados antes das vendas. O endereço só será solicitado ao vencedor.'},{q:'Quando será e como posso pagar?',a:DRAW_RULE+' '+DRAW_TIME_NOTE+' O pagamento será em USDT na BNB Smart Chain (BEP-20), com carteira conectada ou transferência sem conectar. Sem conexão, informe o txid para conferência. Taxa de rede ou saque é separada.'},{q:'Vou receber meus números por e-mail?',a:'Sim. Após a confirmação, o comprovante inclui valor, pedido e números comprados. Para recuperar o pedido em outro dispositivo, use o mesmo e-mail em “Meus pedidos”. Não pedimos seed nem chave privada.'}].map(item=><details key={item.q}><summary>{item.q}</summary><p>{item.a}</p></details>)}</div></section>
       </main>
       <footer className="ledger-footer"><a href="https://investidormatuto.com">INVESTIDOR MATUTO</a><span>{sales?'Vendas abertas':'Vendas públicas ainda fechadas'}</span><span>Ledger é marca de seu respectivo titular. Esta ação não é oficial da Ledger nem da CAIXA.</span></footer>
-      {selected.length>0&&<div className="ledger-mobile-selection"><div><strong>{selected.length} {selected.length===1?'número':'números'} · {usd(total)}</strong><small>{sales?'Frete incluso · taxa de rede à parte':'Vendas fechadas · conferir seleção'}</small></div><button type="button" className="ledger-primary" disabled={!inventoryReady} onClick={continueCheckout}>{sales?'Continuar':'Conferir'}<ArrowRight size={17} aria-hidden="true"/></button></div>}
+      {selected.length>0&&<div className="ledger-mobile-selection"><div><strong>{selected.length} {selected.length===1?'número':'números'} · {usd(total)}</strong><small>{sales?'Frete incluso · taxa de rede à parte':'Vendas em breve'}</small></div><button type="button" className="ledger-primary" disabled={!sales||!inventoryReady} aria-label={sales?buyLabel:"Vendas em breve"} onClick={continueCheckout}>{sales?"Comprar":"Vendas em breve"}<ArrowRight size={17} aria-hidden="true"/></button></div>}
     </div>
   );
 }
-
-
-
-
-
-
